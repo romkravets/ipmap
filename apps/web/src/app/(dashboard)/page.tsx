@@ -8,7 +8,9 @@ import { TweaksPanel } from "@/components/panels/TweaksPanel";
 import { LoadingBar } from "@/components/panels/LoadingBar";
 import { CountryPanel } from "@/components/panels/CountryPanel";
 import { BlockPanel } from "@/components/panels/BlockPanel";
+import { LayerTogglePanel } from "@/components/panels/LayerTogglePanel";
 import { useIpData } from "@/hooks/useIpData";
+import { useInfraData } from "@/hooks/useInfraData";
 
 const GlobeScene = dynamic(
   () => import("@/components/globe/GlobeScene").then((m) => m.GlobeScene),
@@ -19,6 +21,7 @@ function IpMapApp() {
   const { state, dispatch } = useAppContext();
   const { globeMode, tweaks } = state;
   const { countries, blocksByCountry, isLoading } = useIpData();
+  const { cables, dataCenters, ixps } = useInfraData();
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<IpBlock | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<{ block: IpBlock; x: number; y: number } | null>(null);
@@ -63,6 +66,9 @@ function IpMapApp() {
         onCountryClick={setSelectedCountry}
         onBlockClick={handleBlockClick}
         onBlockHover={handleBlockHover}
+        cables={cables}
+        dataCenters={dataCenters}
+        ixps={ixps}
       />
       {isLoading && (
         <div
@@ -92,6 +98,7 @@ function IpMapApp() {
         />
       )}
       <TweaksPanel />
+      <LayerTogglePanel />
       {hoveredBlock && (
         <div
           style={{

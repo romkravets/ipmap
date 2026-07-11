@@ -32,3 +32,33 @@ export interface IpBlock {
   start: string;
   size: number;
 }
+
+// ── Infrastructure layer types ────────────────────────────────────────────────
+
+export interface SubmarineCable {
+  id: string;
+  name: string;
+  color: string;
+  // each segment is an array of [lat, lng] pairs (already swapped from GeoJSON [lng,lat])
+  segments: Array<Array<[number, number]>>;
+}
+
+export interface DataCenter {
+  id: string;
+  name: string;
+  provider: 'aws' | 'gcp' | 'azure' | 'equinix' | 'other';
+  lat: number;
+  lng: number;
+  city: string;
+  country: string;
+}
+
+export interface IxPoint {
+  id: number;
+  name: string;
+  lat: number;
+  lng: number;
+  city: string;
+  country: string;
+  netCount: number;
+}

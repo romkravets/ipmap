@@ -11,21 +11,25 @@ interface LayerDef {
 }
 
 const LAYERS: LayerDef[] = [
-  { key: "cities",    label: "Cities",    icon: "◆" },
-  { key: "resources", label: "Resources", icon: "▲" },
-  { key: "straits",   label: "Straits",   icon: "⬡" },
-  { key: "cables",    label: "Cables",    icon: "∿" },
-  { key: "borders",   label: "Borders",   icon: "▭" },
-  { key: "seasons",   label: "Seasons",   icon: "◑" },
+  { key: "cities",      label: "Cities",       icon: "◆" },
+  { key: "resources",   label: "Resources",    icon: "▲" },
+  { key: "straits",     label: "Straits",      icon: "⬡" },
+  { key: "cables",      label: "Cables",       icon: "∿" },
+  { key: "borders",     label: "Borders",      icon: "▭" },
+  { key: "seasons",     label: "Seasons",      icon: "◑" },
+  { key: "datacenters", label: "Data Centers", icon: "⬡" },
+  { key: "ixps",        label: "IXPs",         icon: "◉" },
 ];
 
 const ACTIVE_COLORS: Record<LayerKey, string> = {
-  cities:    "#e2e8f0",
-  resources: "#f97316",
-  straits:   "#f472b6",
-  cables:    "#22d3ee",
-  borders:   "#7dba8c",
-  seasons:   "#fbbf24",
+  cities:      "#e2e8f0",
+  resources:   "#f97316",
+  straits:     "#f472b6",
+  cables:      "#22d3ee",
+  borders:     "#7dba8c",
+  seasons:     "#fbbf24",
+  datacenters: "#f97316",
+  ixps:        "#a78bfa",
 };
 
 export function LayerTogglePanel() {

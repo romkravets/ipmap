@@ -49,3 +49,6 @@ coverage/
 # ── Generated data (ETL output, не комітити) ──────────────────────────────────
 apps/web/public/data/ipv4-by-country.json
 apps/web/public/data/centroids.json
+apps/web/public/data/submarine-cables.json
+apps/web/public/data/datacenters.json
+apps/web/public/data/ixps.json

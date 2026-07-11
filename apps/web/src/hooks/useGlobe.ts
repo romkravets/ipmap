@@ -2,7 +2,7 @@
 
 import { TWEAK_DEFAULTS } from "@/lib/constants";
 import { getSunLatLng } from "@/lib/sun";
-import type { GlobeMode, TweakValues, CountryAlloc, IpBlock } from "@ipmap/types";
+import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint } from "@ipmap/types";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
@@ -179,6 +179,9 @@ export interface UseGlobeOptions {
   onCountryClick?: (cc: string) => void;
   onBlockClick?: (block: IpBlock) => void;
   onBlockHover?: (block: IpBlock | null, x: number, y: number) => void;
+  cables?: SubmarineCable[];
+  dataCenters?: DataCenter[];
+  ixps?: IxPoint[];
 }
 
 export function useGlobe(
@@ -972,57 +975,93 @@ export function useGlobe(
         tradeMaterials.push(mat);
       });
 
-      // ── Submarine cables ────────────────────────────────────────────────
-      const SUBMARINE_CABLES: Array<{ name: string; waypoints: [number, number][] }> = [
-        { name: "TAT-14",       waypoints: [[39.0, -74.5], [47.5, -40.0], [51.5, -0.1]] },
-        { name: "MAREA",        waypoints: [[36.8, -75.9], [43.3, -8.4]] },
-        { name: "Columbus-3",   waypoints: [[25.8, -80.2], [37.4, -5.9]] },
-        { name: "SAT-3",        waypoints: [[51.5, -0.1], [14.7, -17.4], [4.3, 9.7], [-33.9, 18.4]] },
-        { name: "BRUSA",        waypoints: [[-23.6, -46.6], [32.3, -64.8], [38.0, -74.0]] },
-        { name: "SAm-1",        waypoints: [[25.8, -80.2], [10.5, -75.5], [-12.0, -77.1], [-33.4, -70.7], [-23.6, -46.6]] },
-        { name: "TPC-5",        waypoints: [[33.7, -118.2], [19.9, -155.6], [35.7, 139.7]] },
-        { name: "Hawaiki",      waypoints: [[-36.9, 174.8], [-33.9, 151.2], [21.3, -157.8], [45.5, -122.7]] },
-        { name: "JUPITER",      waypoints: [[34.0, -118.2], [21.3, -157.8], [35.7, 139.7], [14.1, 121.0]] },
-        { name: "AAG",          waypoints: [[22.3, 114.2], [10.8, 106.7], [13.1, 100.5], [19.9, -155.6], [34.0, -118.2]] },
-        { name: "C2C",          waypoints: [[22.3, 114.2], [35.7, 139.7], [47.6, -122.3]] },
-        { name: "SEA-ME-WE 3",  waypoints: [[43.3, 5.4], [29.9, 32.5], [12.8, 43.2], [22.1, 60.0], [19.1, 72.8], [6.9, 79.8], [1.3, 103.8], [-6.2, 106.8]] },
-        { name: "IMEWE",        waypoints: [[22.3, 114.2], [22.1, 60.0], [25.3, 57.0], [12.8, 43.2], [29.9, 32.5], [43.3, 5.4]] },
-        { name: "EASSy",        waypoints: [[11.6, 43.1], [2.0, 45.3], [-4.0, 39.7], [-17.7, 37.0], [-33.9, 18.4]] },
-        { name: "SEACOM",       waypoints: [[-33.9, 18.4], [-23.0, 35.5], [-4.0, 39.7], [1.3, 103.8]] },
-        { name: "SJC",          waypoints: [[35.7, 139.7], [31.2, 121.5], [22.3, 114.2]] },
-      ];
-
-      const cableMaterials: THREE.LineDashedMaterial[] = [];
+      // ── Submarine cables (dynamic) ────────────────────────────────────────
+      const cableMaterials: THREE.LineBasicMaterial[] = [];
       const cableGroup = new THREE.Group();
       scene.add(cableGroup);
 
-      SUBMARINE_CABLES.forEach((cable) => {
-        const pts: THREE.Vector3[] = [];
-        for (let i = 0; i < cable.waypoints.length - 1; i++) {
-          const [la1, ln1] = cable.waypoints[i];
-          const [la2, ln2] = cable.waypoints[i + 1];
-          pts.push(...greatCircleArc(
-            latLngToVec3(la1, ln1, 1.0),
-            latLngToVec3(la2, ln2, 1.0),
-            0.002,
-            40,
-          ));
+      function buildCableLayer(cables: SubmarineCable[]) {
+        while (cableGroup.children.length) {
+          const c = cableGroup.children[0] as THREE.Line;
+          c.geometry.dispose();
+          (c.material as THREE.Material).dispose();
+          cableGroup.remove(c);
         }
-        const geo = new THREE.BufferGeometry().setFromPoints(pts);
-        const mat = new THREE.LineDashedMaterial({
-          color: 0x22d3ee,
-          dashSize: 0.018,
-          gapSize: 0.012,
-          linewidth: 1,
-          transparent: true,
-          opacity: 0.5,
-          depthTest: true,
+        cableMaterials.length = 0;
+        for (const cable of cables) {
+          const color = new THREE.Color(cable.color || '#22d3ee');
+          for (const seg of cable.segments) {
+            if (seg.length < 2) continue;
+            const pts = seg.map(([lat, lng]) => latLngToVec3(lat, lng, 1.002));
+            const geo = new THREE.BufferGeometry().setFromPoints(pts);
+            const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.55 });
+            const line = new THREE.Line(geo, mat);
+            cableGroup.add(line);
+            cableMaterials.push(mat);
+          }
+        }
+      }
+      if (optionsRef.current.cables?.length) buildCableLayer(optionsRef.current.cables);
+
+      // ── Data centers ──────────────────────────────────────────────────────
+      const PROVIDER_COLORS: Record<string, number> = {
+        aws:     0xf97316,  // orange
+        gcp:     0x34d399,  // green
+        azure:   0x60a5fa,  // blue
+        equinix: 0xfbbf24,  // amber
+        other:   0x94a3b8,  // slate
+      };
+
+      const dcGroup = new THREE.Group();
+      scene.add(dcGroup);
+
+      function buildDcLayer(dcs: DataCenter[]) {
+        while (dcGroup.children.length) {
+          const m = dcGroup.children[0] as THREE.Mesh;
+          m.geometry.dispose();
+          (m.material as THREE.Material).dispose();
+          dcGroup.remove(m);
+        }
+        const geo = new THREE.CircleGeometry(0.008, 6);
+        for (const dc of dcs) {
+          const mat = new THREE.MeshBasicMaterial({ color: PROVIDER_COLORS[dc.provider] ?? PROVIDER_COLORS.other });
+          const mesh = new THREE.Mesh(geo, mat);
+          const pos = latLngToVec3(dc.lat, dc.lng, 1.003);
+          mesh.position.copy(pos);
+          mesh.lookAt(pos.clone().multiplyScalar(2));
+          mesh.userData = { dc };
+          dcGroup.add(mesh);
+        }
+      }
+      if (optionsRef.current.dataCenters?.length) buildDcLayer(optionsRef.current.dataCenters);
+
+      // ── IXPs ──────────────────────────────────────────────────────────────
+      const ixpGroup = new THREE.Group();
+      scene.add(ixpGroup);
+      let ixpPoints: THREE.Points | null = null;
+
+      function buildIxpLayer(ixps: IxPoint[]) {
+        if (ixpPoints) {
+          ixpGroup.remove(ixpPoints);
+          ixpPoints.geometry.dispose();
+          (ixpPoints.material as THREE.Material).dispose();
+          ixpPoints = null;
+        }
+        if (!ixps.length) return;
+        const positions = new Float32Array(ixps.length * 3);
+        ixps.forEach((ix, i) => {
+          const v = latLngToVec3(ix.lat, ix.lng, 1.004);
+          positions[i * 3]     = v.x;
+          positions[i * 3 + 1] = v.y;
+          positions[i * 3 + 2] = v.z;
         });
-        const line = new THREE.Line(geo, mat);
-        (line as unknown as { computeLineDistances(): void }).computeLineDistances();
-        cableGroup.add(line);
-        cableMaterials.push(mat);
-      });
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        const mat = new THREE.PointsMaterial({ color: 0xa78bfa, size: 0.012, sizeAttenuation: true });
+        ixpPoints = new THREE.Points(geo, mat);
+        ixpGroup.add(ixpPoints);
+      }
+      if (optionsRef.current.ixps?.length) buildIxpLayer(optionsRef.current.ixps);
 
       // ── Globe projection (shared with React overlay) ───────────────────
       window.globeProject = (lat: number, lng: number) => {
@@ -1043,14 +1082,18 @@ export function useGlobe(
         set visible(v: boolean) { borderGroup.visible = v; politicalGroup.visible = v; },
       };
       window.globeLayerGroups = {
-        cables:  cableGroup,
-        borders: bordersProxy,
+        cables:      cableGroup,
+        borders:     bordersProxy,
+        datacenters: dcGroup,
+        ixps:        ixpGroup,
       };
 
       // Apply initial layer defaults immediately after Three.js groups are registered
       const initLayers = (window as Window & { globeLayers?: Record<string, boolean> }).globeLayers;
       bordersProxy.visible = initLayers?.borders ?? false;
       if (initLayers?.cables !== undefined) cableGroup.visible = initLayers.cables;
+      if (initLayers?.datacenters !== undefined) dcGroup.visible = initLayers.datacenters;
+      if (initLayers?.ixps !== undefined) ixpGroup.visible = initLayers.ixps;
 
       window.globeState = {
         mode: optionsRef.current.mode,
@@ -1260,6 +1303,10 @@ export function useGlobe(
       const lastCountriesRef = { current: optionsRef.current.countries };
       // Відстежуємо зміну вибраної країни
       const lastSelectedRef = { current: undefined as string | null | undefined };
+      // Відстежуємо зміни інфраструктурних даних
+      const lastCablesRef = { current: optionsRef.current.cables };
+      const lastDcsRef = { current: optionsRef.current.dataCenters };
+      const lastIxpsRef = { current: optionsRef.current.ixps };
 
       function animate() {
         if (!mounted) return;
@@ -1320,13 +1367,6 @@ export function useGlobe(
           ).dashOffset -= dt * 0.04;
         });
 
-        // Animate submarine cable dash flow (cyan, slower)
-        cableMaterials.forEach((mat) => {
-          (
-            mat as THREE.LineDashedMaterial & { dashOffset: number }
-          ).dashOffset -= dt * 0.02;
-        });
-
         // Camera tween до країни
         if (camTweenT < 1.0 && camTarget && camFrom) {
           camTweenT = Math.min(1.0, camTweenT + dt * 1.0);
@@ -1362,6 +1402,23 @@ export function useGlobe(
         if (newCountries !== lastCountriesRef.current) {
           lastCountriesRef.current = newCountries;
           if (newCountries) buildCountryMarkers(newCountries);
+        }
+
+        // Rebuild cable/dc/ixp layers when data props change
+        const curCables = optionsRef.current.cables;
+        if (curCables !== lastCablesRef.current) {
+          lastCablesRef.current = curCables;
+          if (curCables) buildCableLayer(curCables);
+        }
+        const curDcs = optionsRef.current.dataCenters;
+        if (curDcs !== lastDcsRef.current) {
+          lastDcsRef.current = curDcs;
+          if (curDcs) buildDcLayer(curDcs);
+        }
+        const curIxps = optionsRef.current.ixps;
+        if (curIxps !== lastIxpsRef.current) {
+          lastIxpsRef.current = curIxps;
+          if (curIxps) buildIxpLayer(curIxps);
         }
 
         // Маркери завжди дивляться на камеру (billboard)

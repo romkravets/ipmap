@@ -2,15 +2,17 @@
 
 import { useState, useEffect } from "react";
 
-export type LayerKey = "cities" | "resources" | "straits" | "cables" | "borders" | "seasons";
+export type LayerKey = "cities" | "resources" | "straits" | "cables" | "borders" | "seasons" | "datacenters" | "ixps";
 
 const LAYER_DEFAULTS: Record<LayerKey, boolean> = {
-  cities:    true,
-  resources: true,
-  straits:   true,
-  cables:    true,
-  borders:   false,
-  seasons:   true,
+  cities:      true,
+  resources:   true,
+  straits:     true,
+  cables:      true,
+  borders:     false,
+  seasons:     true,
+  datacenters: true,
+  ixps:        true,
 };
 
 // Read from window or return default
@@ -54,8 +56,10 @@ export function useLayerControls(): [Record<LayerKey, boolean>, (key: LayerKey) 
     // Update Three.js groups if exposed
     const groups = (window as Window & { globeLayerGroups?: Partial<Record<LayerKey, { visible: boolean }>> }).globeLayerGroups;
     if (groups) {
-      if (key === "cables"  && groups.cables)  groups.cables.visible  = next.cables;
-      if (key === "borders" && groups.borders) groups.borders.visible = next.borders;
+      if (key === "cables"      && groups.cables)      groups.cables.visible      = next.cables;
+      if (key === "borders"     && groups.borders)     groups.borders.visible     = next.borders;
+      if (key === "datacenters" && groups.datacenters) groups.datacenters.visible = next.datacenters;
+      if (key === "ixps"        && groups.ixps)        groups.ixps.visible        = next.ixps;
     }
 
     window.dispatchEvent(new CustomEvent("globe-layers-changed"));
