@@ -1,0 +1,136 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0A0E1A;
+  --bg-panel: #111520;
+  --bg-panel2: #0d1120;
+  --fg: #E8ECF4;
+  --fg-muted: #6B7489;
+  --fg-dim: #3d4560;
+  --accent: #7DD3FC;
+  --accent-warm: #FBBF24;
+  --session-asia: #A78BFA;
+  --session-europe: #34D399;
+  --session-americas: #F472B6;
+  --overlap: #FDE047;
+  --danger: #F87171;
+  --border: rgba(255, 255, 255, 0.06);
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+body.terminal-mode {
+  --bg: #000000;
+  --fg: #00FF9F;
+  --fg-muted: #00a066;
+  --fg-dim: #003322;
+  --accent: #00E5FF;
+  --bg-panel: #030a06;
+  --bg-panel2: #020804;
+  --border: #0e2018;
+}
+
+.mode-transition {
+  transition: background 0.4s ease, color 0.4s ease;
+}
+
+/* ── Mobile responsive ───────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* ── Wrapper ── */
+  .clean-ui-wrap {
+    padding: 10px 12px !important;
+  }
+
+  /* ── Top bar: no wrap, compact ── */
+  .clean-ui-topbar {
+    flex-wrap: nowrap;
+    gap: 6px;
+    align-items: center;
+  }
+
+  /* GlobeModeBar: icon-only (hide text labels) */
+  .mode-label {
+    display: none;
+  }
+
+  /* Bell / Terminal: hide text, keep icon */
+  .topbar-btn-text {
+    display: none;
+  }
+
+  /* ── Whale ticker: hidden ── */
+  .clean-ui-whale-ticker {
+    display: none;
+  }
+
+  /* ── Bottom row: side-by-side, pinned to screen edges ── */
+  .clean-ui-bottom {
+    flex-direction: row !important;
+    justify-content: space-between;
+    align-items: flex-end !important;
+    gap: 8px;
+  }
+
+  /* Center column (volume bars, gas, dominance, correlation): hidden */
+  .clean-ui-center {
+    display: none !important;
+  }
+
+  /* Session block: limit width so prices have room */
+  .clean-ui-bottom > div:first-child {
+    max-width: 52% !important;
+  }
+
+  /* ── Prices: column, right-aligned ── */
+  .clean-ui-prices {
+    flex-direction: column !important;
+    align-items: flex-end !important;
+    gap: 5px !important;
+  }
+
+  /* Hide SOL / XRP on mobile — only BTC + ETH */
+  .clean-ui-price-extra {
+    display: none;
+  }
+
+  /* Hide commodities & season on mobile */
+  .clean-ui-commodities,
+  .clean-ui-season {
+    display: none !important;
+  }
+
+  /* ── Terminal ── */
+  .terminal-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .terminal-left-panel {
+    max-height: 180px;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(0,255,159,0.08);
+  }
+  .terminal-right-panel {
+    border-left: none !important;
+    border-top: 1px solid rgba(0,255,159,0.08);
+    max-height: 220px;
+  }
+  .terminal-center-void {
+    display: none;
+  }
+  .terminal-bottom-bar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+  .terminal-bottom-bar > div {
+    min-width: 80px;
+  }
+}
