@@ -147,9 +147,10 @@ export function TweaksPanel() {
 
           <div className="twk-sect">Visibility</div>
           {([
+            ['autoRotate',     'Auto Rotate'],
             ['showTerminator', 'Day/Night Line'],
             ['showSunMarker',  'Sun Marker'],
-            ['markerPulse',    'Exchange Pulse'],
+            ['markerPulse',    'Country Pulse'],
           ] as [keyof TweakValues, string][]).map(([key, label]) => (
             <div key={key} className="twk-row twk-row-h">
               <label style={{ fontSize: '11px', color: 'rgba(232,236,244,.6)', fontWeight: 500 }}>{label}</label>

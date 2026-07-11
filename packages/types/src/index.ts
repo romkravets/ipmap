@@ -4,6 +4,7 @@ export type GlobeMode = "auto" | "free" | "follow";
 
 export interface TweakValues {
   rotationSpeed: number;
+  autoRotate: boolean;
   showTerminator: boolean;
   showSunMarker: boolean;
   markerPulse: boolean;

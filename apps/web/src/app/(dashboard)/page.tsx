@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { AppProvider, useAppContext } from "@/contexts/AppContext";
 import type { GlobeMode, IpBlock } from "@ipmap/types";
@@ -53,6 +53,25 @@ function IpMapApp() {
     setHoveredBlock(block ? { block, x, y } : null);
   };
 
+  // Close BlockPanel when clicking canvas (outside any block marker)
+  useEffect(() => {
+    if (!selectedBlock) return;
+    const onDown = (e: PointerEvent) => {
+      if ((e.target as HTMLElement).tagName === 'CANVAS') {
+        setSelectedBlock(null);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedBlock(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [selectedBlock]);
+
   return (
     <>
       <LoadingBar />
@@ -66,7 +85,6 @@ function IpMapApp() {
         onCountryClick={setSelectedCountry}
         onBlockClick={handleBlockClick}
         onBlockHover={handleBlockHover}
-        onMissClick={() => setSelectedBlock(null)}
         cables={cables}
         dataCenters={dataCenters}
         ixps={ixps}

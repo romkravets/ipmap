@@ -1362,7 +1362,7 @@ export function useGlobe(
         controls.autoRotateSpeed = speed;
         // Не перезаписувати autoRotate під час tween камери
         if (camTweenT >= 1.0) {
-          controls.autoRotate = mode === "auto" && !optionsRef.current.selectedCountry;
+          controls.autoRotate = (tweaks.autoRotate ?? true) && mode === "auto" && !optionsRef.current.selectedCountry;
         }
 
         // Animate trade route dash flow (golden ant march effect)
