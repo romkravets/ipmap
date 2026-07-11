@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useState, useEffect } from "react";
-import { getSunLatLng } from "@/lib/session-logic";
+import { getSunLatLng } from "@/lib/sun";
 import { useLayer } from "@/hooks/useLayers";
 
 const SEASON_EMOJI: Record<string, string> = {

@@ -1,7 +1,7 @@
 "use client";
 
 import { EXCHANGES, STOCK_MARKETS, SESSION_COLORS_HEX, TWEAK_DEFAULTS } from "@/lib/constants";
-import { getSunLatLng } from "@/lib/session-logic";
+import { getSunLatLng } from "@/lib/sun";
 import type { GlobeMode, TweakValues } from "@ipmap/types";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";

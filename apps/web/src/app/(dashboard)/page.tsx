@@ -11,7 +11,7 @@ import { useLiveExchanges } from "@/hooks/useLiveExchanges";
 import { usePriceAlerts } from "@/hooks/usePriceAlerts";
 import { useStockTicker } from "@/hooks/useStockTicker";
 import { useCorrelation } from "@/hooks/useCorrelation";
-import { getSunLatLng } from "@/lib/session-logic";
+import { getSunLatLng } from "@/lib/sun";
 import type { GlobeMode } from "@ipmap/types";
 import { TweaksPanel } from "@/components/panels/TweaksPanel";
 import { PriceAlertsPanel } from "@/components/panels/PriceAlertsPanel";
