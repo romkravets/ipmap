@@ -8,7 +8,10 @@ import { TweaksPanel } from "@/components/panels/TweaksPanel";
 import { LoadingBar } from "@/components/panels/LoadingBar";
 import { CountryPanel } from "@/components/panels/CountryPanel";
 import { BlockPanel } from "@/components/panels/BlockPanel";
-import { LayerTogglePanel } from "@/components/panels/LayerTogglePanel";
+const LayerTogglePanel = dynamic(
+  () => import("@/components/panels/LayerTogglePanel").then((m) => m.LayerTogglePanel),
+  { ssr: false },
+);
 import { useIpData } from "@/hooks/useIpData";
 import { useInfraData } from "@/hooks/useInfraData";
 
