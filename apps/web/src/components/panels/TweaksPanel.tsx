@@ -52,7 +52,7 @@ const CSS = `
 export function TweaksPanel() {
   const { state, dispatch } = useAppContext()
   const { tweaks, globeMode } = state
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(true)
   const panelRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 16, y: 16 })
 

@@ -53,24 +53,19 @@ function IpMapApp() {
     setHoveredBlock(block ? { block, x, y } : null);
   };
 
-  // Close BlockPanel when clicking canvas (outside any block marker)
+  // Close BlockPanel with Escape key
   useEffect(() => {
-    if (!selectedBlock) return;
-    const onDown = (e: PointerEvent) => {
-      if ((e.target as HTMLElement).tagName === 'CANVAS') {
-        setSelectedBlock(null);
-      }
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSelectedBlock(null);
     };
-    document.addEventListener('pointerdown', onDown);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [selectedBlock]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Close BlockPanel when clicking empty canvas space (not hovering a block)
+  const handleCanvasPointerDown = () => {
+    if (!hoveredBlock) setSelectedBlock(null);
+  };
 
   return (
     <>
@@ -85,6 +80,7 @@ function IpMapApp() {
         onCountryClick={setSelectedCountry}
         onBlockClick={handleBlockClick}
         onBlockHover={handleBlockHover}
+        onCanvasPointerDown={handleCanvasPointerDown}
         cables={cables}
         dataCenters={dataCenters}
         ixps={ixps}
