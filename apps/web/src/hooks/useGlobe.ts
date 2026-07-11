@@ -41,21 +41,12 @@ interface GlobeProject {
 declare global {
   interface Window {
     globeProject?: GlobeProject;
-    exchangeData?: typeof EXCHANGES;
     globeState?: {
       setMode: (m: GlobeMode) => void;
       mode: GlobeMode;
     };
     globeCamDist?: number;
     globeLayerGroups?: Record<string, { visible: boolean }>;
-    timeOffsetHours?: number;
-    tweakPulse?: boolean;
-    onWhaleArc?: (w: {
-      type: string;
-      amount: number;
-      from: string;
-      to: string;
-    }) => void;
   }
 }
 
@@ -181,12 +172,6 @@ async function loadOrbitControls() {
 export interface UseGlobeOptions {
   mode: GlobeMode;
   tweaks: TweakValues;
-  onWhaleArc?: (w: {
-    type: string;
-    amount: number;
-    from: string;
-    to: string;
-  }) => void;
 }
 
 export function useGlobe(
@@ -1033,7 +1018,6 @@ export function useGlobe(
       });
 
       // ── Globe projection (shared with React overlay) ───────────────────
-      window.exchangeData = EXCHANGES;
       window.globeProject = (lat: number, lng: number) => {
         const pos = latLngToVec3(lat, lng, 1.0);
         const camDir = camera.position.clone().normalize();
@@ -1075,218 +1059,9 @@ export function useGlobe(
         },
       };
 
-      // ── Whale arc system ──────────────────────────────────────────────────
-      interface ArcEntry {
-        line: THREE.Line;
-        dotMesh: THREE.Mesh;
-        glowMesh: THREE.Mesh;
-        tail: THREE.Line;
-        tailMat: THREE.LineBasicMaterial;
-        lineMat: THREE.LineBasicMaterial;
-        arcPts: THREE.Vector3[];
-        progress: number;
-        born: number;
-        lifetime: number;
-        amountBTC: number;
-      }
-
-      const WHALE_COLORS: Record<string, THREE.Color> = {
-        transfer: new THREE.Color(0xfbbf24),
-        deposit: new THREE.Color(0x7dd3fc),
-        withdraw: new THREE.Color(0xf472b6),
-        dex: new THREE.Color(0x34d399),
-      };
-
-      const whaleGroup = new THREE.Group();
-      scene.add(whaleGroup);
-      const activeArcs: ArcEntry[] = [];
-
-      function spawnWhaleArc(whale?: {
-        type: string;
-        amount: number;
-        from: string;
-        to: string;
-      }) {
-        const exList = EXCHANGES;
-        let i1 = Math.floor(Math.random() * exList.length);
-        let i2 = Math.floor(Math.random() * (exList.length - 1));
-        if (i2 >= i1) i2++;
-
-        const ex1 = exList[i1];
-        const ex2 = exList[i2];
-        const p1 = latLngToVec3(ex1.lat, ex1.lng, 1);
-        const p2 = latLngToVec3(ex2.lat, ex2.lng, 1);
-        const dist = p1.distanceTo(p2);
-        const peakAlt = 0.08 + dist * 0.14;
-        const arcPts = greatCircleArc(p1, p2, peakAlt);
-
-        const type = whale?.type ?? "transfer";
-        const amountBTC =
-          whale?.amount ?? Math.floor(Math.random() * 4500 + 200);
-        const col = WHALE_COLORS[type] ?? WHALE_COLORS.transfer;
-        const lineOpacity = 0.15 + Math.min(amountBTC / 5000, 1) * 0.35;
-
-        const lineMat = new THREE.LineBasicMaterial({
-          color: col,
-          transparent: true,
-          opacity: lineOpacity,
-          depthWrite: false,
-        });
-        const line = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints(arcPts),
-          lineMat,
-        );
-        whaleGroup.add(line);
-
-        const dotSize = 0.009 + Math.min(amountBTC / 5000, 1) * 0.016;
-        const dotMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(dotSize, 8, 8),
-          new THREE.MeshBasicMaterial({ color: col, depthWrite: false }),
-        );
-        const glowMesh = new THREE.Mesh(
-          new THREE.SphereGeometry(dotSize * 2.5, 8, 8),
-          new THREE.MeshBasicMaterial({
-            color: col,
-            transparent: true,
-            opacity: 0.25,
-            depthWrite: false,
-          }),
-        );
-        whaleGroup.add(dotMesh, glowMesh);
-
-        const tailMat = new THREE.LineBasicMaterial({
-          color: col,
-          transparent: true,
-          opacity: 0.7,
-          depthWrite: false,
-        });
-        const tail = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([arcPts[0], arcPts[0]]),
-          tailMat,
-        );
-        whaleGroup.add(tail);
-
-        activeArcs.push({
-          line,
-          dotMesh,
-          glowMesh,
-          tail,
-          tailMat,
-          lineMat,
-          arcPts,
-          progress: 0,
-          born: elapsed,
-          lifetime: 5.5,
-          amountBTC,
-        });
-      }
-
-      function updateWhaleArcs() {
-        const TAIL_SEGS = 12;
-        for (let i = activeArcs.length - 1; i >= 0; i--) {
-          const arc = activeArcs[i];
-          const age = elapsed - arc.born;
-          const lifeRatio = age / arc.lifetime;
-
-          if (lifeRatio >= 1) {
-            whaleGroup.remove(arc.line, arc.dotMesh, arc.glowMesh, arc.tail);
-            arc.line.geometry.dispose();
-            arc.lineMat.dispose();
-            arc.tail.geometry.dispose();
-            arc.tailMat.dispose();
-            (arc.dotMesh.material as THREE.Material).dispose();
-            (arc.glowMesh.material as THREE.Material).dispose();
-            activeArcs.splice(i, 1);
-            continue;
-          }
-
-          const t = lifeRatio;
-          arc.progress = t < 0.85 ? t / 0.85 : 1;
-          const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
-          arc.lineMat.opacity =
-            (0.12 + Math.min(arc.amountBTC / 5000, 1) * 0.3) * alpha;
-          arc.tailMat.opacity = 0.7 * alpha;
-          (arc.dotMesh.material as THREE.MeshBasicMaterial).opacity = alpha;
-          (arc.glowMesh.material as THREE.MeshBasicMaterial).opacity =
-            0.25 * alpha;
-
-          const idx = Math.floor(arc.progress * (arc.arcPts.length - 1));
-          arc.dotMesh.position.copy(arc.arcPts[idx]);
-          arc.glowMesh.position.copy(arc.arcPts[idx]);
-
-          const tailStart = Math.max(0, idx - TAIL_SEGS);
-          const tailPts = arc.arcPts.slice(tailStart, idx + 1);
-          if (tailPts.length > 1) arc.tail.geometry.setFromPoints(tailPts);
-        }
-      }
-
-      // Expose spawn to outside world (for WS whale events)
-      window.onWhaleArc = (w) => spawnWhaleArc(w);
-
       // ── Animation loop ────────────────────────────────────────────────────
       let elapsed = 0;
       const clock = new THREE.Clock();
-      let nextSpawn = 3;
-
-      // ── Exchange markers (flat billboards) ───────────────────────────
-      const markerGroup = new THREE.Group();
-      scene.add(markerGroup);
-      const markerMeshes: {
-        dot: THREE.Mesh;
-        ring: THREE.Mesh;
-        phase: number;
-        ex: (typeof EXCHANGES)[0];
-      }[] = [];
-
-      EXCHANGES.forEach((ex) => {
-        const pos = latLngToVec3(ex.lat, ex.lng, 1.013);
-        const r = 0.007 + Math.log(ex.vol + 1) * 0.003;
-        const col = new THREE.Color(SESSION_COLORS_HEX[ex.region]);
-
-        const dot = new THREE.Mesh(
-          new THREE.CircleGeometry(r, 16),
-          new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }),
-        );
-
-        const ring = new THREE.Mesh(
-          new THREE.RingGeometry(r * 1.8, r * 2.6, 24),
-          new THREE.MeshBasicMaterial({
-            color: col,
-            transparent: true,
-            opacity: 0.35,
-            side: THREE.DoubleSide,
-            depthWrite: false,
-          }),
-        );
-
-        dot.position.copy(pos);
-        ring.position.copy(pos);
-        markerGroup.add(dot, ring);
-        markerMeshes.push({ dot, ring, phase: Math.random() * Math.PI * 2, ex });
-      });
-
-      // ── Stock market diamond markers ─────────────────────────────────
-      const stockGroup = new THREE.Group();
-      scene.add(stockGroup);
-      const stockMeshes: { mesh: THREE.Mesh }[] = [];
-
-      STOCK_MARKETS.forEach((m) => {
-        const pos = latLngToVec3(m.lat, m.lng, 1.017);
-        const size = 0.014;
-        const mesh = new THREE.Mesh(
-          new THREE.PlaneGeometry(size, size),
-          new THREE.MeshBasicMaterial({
-            color: new THREE.Color(m.color),
-            side: THREE.DoubleSide,
-            transparent: true,
-            opacity: 0.85,
-          }),
-        );
-        mesh.position.copy(pos);
-        mesh.rotation.z = Math.PI / 4; // rotate 45° → diamond shape
-        stockGroup.add(mesh);
-        stockMeshes.push({ mesh });
-      });
 
       function animate() {
         if (!mounted) return;
@@ -1337,26 +1112,6 @@ export function useGlobe(
         controls.autoRotateSpeed = speed;
         controls.autoRotate = mode === "auto";
 
-        markerMeshes.forEach((m) => {
-          // Billboard — always face camera
-          m.dot.quaternion.copy(camera.quaternion);
-          m.ring.quaternion.copy(camera.quaternion);
-
-          if (!tweaks.markerPulse) {
-            (m.ring.material as THREE.MeshBasicMaterial).opacity = 0;
-            return;
-          }
-          const s = 1 + 0.5 * Math.sin(elapsed * 1.4 + m.phase);
-          m.ring.scale.setScalar(s);
-          (m.ring.material as THREE.MeshBasicMaterial).opacity =
-            0.35 * (2.2 - s) * 0.5;
-        });
-
-        // Billboard stock market squares
-        stockMeshes.forEach((m) => {
-          m.mesh.quaternion.copy(camera.quaternion);
-        });
-
         // Animate trade route dash flow (golden ant march effect)
         tradeMaterials.forEach((mat) => {
           (
@@ -1371,14 +1126,6 @@ export function useGlobe(
           ).dashOffset -= dt * 0.02;
         });
 
-        // auto-spawn arcs when no WS (fallback mode)
-        nextSpawn -= dt;
-        if (nextSpawn <= 0) {
-          spawnWhaleArc();
-          nextSpawn = 3 + Math.random() * 4;
-        }
-
-        updateWhaleArcs();
         window.globeCamDist = camera.position.length();
         controls.update();
         renderer.render(scene, camera);
@@ -1410,7 +1157,6 @@ export function useGlobe(
         delete window.globeProject;
         delete window.globeState;
         delete window.globeCamDist;
-        delete window.onWhaleArc;
       };
     })();
 
