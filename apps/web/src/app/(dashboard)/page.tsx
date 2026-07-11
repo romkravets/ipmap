@@ -66,6 +66,7 @@ function IpMapApp() {
         onCountryClick={setSelectedCountry}
         onBlockClick={handleBlockClick}
         onBlockHover={handleBlockHover}
+        onMissClick={() => setSelectedBlock(null)}
         cables={cables}
         dataCenters={dataCenters}
         ixps={ixps}

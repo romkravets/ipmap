@@ -14,6 +14,7 @@ interface GlobeSceneProps {
   onCountryClick?: (cc: string) => void
   onBlockClick?: (block: IpBlock) => void
   onBlockHover?: (block: IpBlock | null, x: number, y: number) => void
+  onMissClick?: () => void
   cables?: SubmarineCable[]
   dataCenters?: DataCenter[]
   ixps?: IxPoint[]
@@ -29,12 +30,13 @@ export const GlobeScene = memo(function GlobeScene({
   onCountryClick,
   onBlockClick,
   onBlockHover,
+  onMissClick,
   cables,
   dataCenters,
   ixps,
 }: GlobeSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  useGlobe(canvasRef, { mode, tweaks, countries, selectedCountry, countryData, countryBlocks, onCountryClick, onBlockClick, onBlockHover, cables, dataCenters, ixps })
+  useGlobe(canvasRef, { mode, tweaks, countries, selectedCountry, countryData, countryBlocks, onCountryClick, onBlockClick, onBlockHover, onMissClick, cables, dataCenters, ixps })
 
   return (
     <canvas

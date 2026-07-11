@@ -179,6 +179,7 @@ export interface UseGlobeOptions {
   onCountryClick?: (cc: string) => void;
   onBlockClick?: (block: IpBlock) => void;
   onBlockHover?: (block: IpBlock | null, x: number, y: number) => void;
+  onMissClick?: () => void;
   cables?: SubmarineCable[];
   dataCenters?: DataCenter[];
   ixps?: IxPoint[];
@@ -1264,8 +1265,12 @@ export function useGlobe(
           if (hits.length > 0) {
             const cc = hits[0].object.userData.cc as string;
             optionsRef.current.onCountryClick?.(cc);
+            return;
           }
         }
+
+        // Клік по порожньому місцю — закрити відкриту панель блоку
+        optionsRef.current.onMissClick?.();
       };
       canvas.addEventListener('click', onCanvasClick);
 
