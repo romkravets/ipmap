@@ -2,7 +2,7 @@
 
 import { TWEAK_DEFAULTS } from "@/lib/constants";
 import { getSunLatLng } from "@/lib/sun";
-import type { GlobeMode, TweakValues, CountryAlloc } from "@ipmap/types";
+import type { GlobeMode, TweakValues, CountryAlloc, IpBlock } from "@ipmap/types";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
@@ -173,7 +173,11 @@ export interface UseGlobeOptions {
   mode: GlobeMode;
   tweaks: TweakValues;
   countries?: CountryAlloc[];
+  selectedCountry?: string | null;
+  countryData?: CountryAlloc | null;
+  countryBlocks?: IpBlock[];
   onCountryClick?: (cc: string) => void;
+  onBlockClick?: (block: IpBlock) => void;
 }
 
 export function useGlobe(
@@ -1124,6 +1128,68 @@ export function useGlobe(
         buildCountryMarkers(optionsRef.current.countries);
       }
 
+      // ── Block cluster ─────────────────────────────────────────────────────────────
+      const blockGroup = new THREE.Group();
+      scene.add(blockGroup);
+      let blockPoints: THREE.Points | null = null;
+      let blockEntries: IpBlock[] = [];
+
+      function buildBlockCluster(blocks: IpBlock[], centerLat: number, centerLng: number) {
+        if (blockPoints) {
+          blockGroup.remove(blockPoints);
+          blockPoints.geometry.dispose();
+          (blockPoints.material as THREE.Material).dispose();
+          blockPoints = null;
+        }
+        blockEntries = blocks;
+        if (!blocks.length) return;
+
+        const cols = Math.ceil(Math.sqrt(blocks.length));
+        const step = 0.6; // degrees between blocks
+        const positions: number[] = [];
+
+        blocks.forEach((_, i) => {
+          const row = Math.floor(i / cols) - Math.floor(cols / 2);
+          const col = (i % cols) - Math.floor(cols / 2);
+          const lat = centerLat + row * step;
+          const lng = centerLng + col * step;
+          const v = latLngToVec3(lat, lng, 1.015);
+          positions.push(v.x, v.y, v.z);
+        });
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        const mat = new THREE.PointsMaterial({
+          size: 0.012,
+          color: 0x60a5fa,
+          sizeAttenuation: true,
+        });
+        blockPoints = new THREE.Points(geo, mat);
+        blockGroup.add(blockPoints);
+      }
+
+      function clearBlockCluster() {
+        if (blockPoints) {
+          blockGroup.remove(blockPoints);
+          blockPoints.geometry.dispose();
+          (blockPoints.material as THREE.Material).dispose();
+          blockPoints = null;
+        }
+        blockEntries = [];
+      }
+
+      // ── Camera tween ──────────────────────────────────────────────────────────────
+      let camTarget: THREE.Vector3 | null = null;
+      let camFrom: THREE.Vector3 | null = null;
+      let camTweenT = 1.0;
+
+      function tweenCameraTo(lat: number, lng: number, dist = 2.2) {
+        camFrom = camera.position.clone();
+        camTarget = latLngToVec3(lat, lng).multiplyScalar(dist);
+        camTweenT = 0;
+        controls.autoRotate = false;
+      }
+
       // ── Raycasting click ──────────────────────────────────────────────────────────
       const raycaster = new THREE.Raycaster();
       const onCanvasClick = (e: MouseEvent) => {
@@ -1133,11 +1199,28 @@ export function useGlobe(
           -((e.clientY - rect.top) / rect.height) * 2 + 1,
         );
         raycaster.setFromCamera(mouse, camera);
-        const dots = countryMeshes.map(m => m.dot);
-        const hits = raycaster.intersectObjects(dots);
-        if (hits.length > 0) {
-          const cc = hits[0].object.userData.cc as string;
-          optionsRef.current.onCountryClick?.(cc);
+
+        // Рівень Країна: клік по блоку
+        if (blockPoints) {
+          raycaster.params.Points = { threshold: 0.015 };
+          const blockHits = raycaster.intersectObject(blockPoints);
+          if (blockHits.length > 0) {
+            const idx = blockHits[0].index ?? 0;
+            if (blockEntries[idx]) {
+              optionsRef.current.onBlockClick?.(blockEntries[idx]);
+            }
+            return;
+          }
+        }
+
+        // Рівень Світ: клік по country marker
+        if (countryGroup.visible) {
+          const dots = countryMeshes.map(m => m.dot);
+          const hits = raycaster.intersectObjects(dots);
+          if (hits.length > 0) {
+            const cc = hits[0].object.userData.cc as string;
+            optionsRef.current.onCountryClick?.(cc);
+          }
         }
       };
       canvas.addEventListener('click', onCanvasClick);
@@ -1147,6 +1230,8 @@ export function useGlobe(
       const clock = new THREE.Clock();
       // Відстежуємо зміни масиву countries між рендерами
       const lastCountriesRef = { current: optionsRef.current.countries };
+      // Відстежуємо зміну вибраної країни
+      const lastSelectedRef = { current: undefined as string | null | undefined };
 
       function animate() {
         if (!mounted) return;
@@ -1195,7 +1280,10 @@ export function useGlobe(
         const speed =
           ((tweaks.rotationSpeed ?? TWEAK_DEFAULTS.rotationSpeed) / 50) * 0.6;
         controls.autoRotateSpeed = speed;
-        controls.autoRotate = mode === "auto";
+        // Не перезаписувати autoRotate під час tween камери
+        if (camTweenT >= 1.0) {
+          controls.autoRotate = mode === "auto" && !optionsRef.current.selectedCountry;
+        }
 
         // Animate trade route dash flow (golden ant march effect)
         tradeMaterials.forEach((mat) => {
@@ -1211,8 +1299,35 @@ export function useGlobe(
           ).dashOffset -= dt * 0.02;
         });
 
+        // Camera tween до країни
+        if (camTweenT < 1.0 && camTarget && camFrom) {
+          camTweenT = Math.min(1.0, camTweenT + dt * 1.0);
+          const ease = 1 - Math.pow(1 - camTweenT, 3); // cubic ease-out
+          camera.position.lerpVectors(camFrom, camTarget, ease);
+        }
+
         window.globeCamDist = camera.position.length();
         controls.update();
+
+        // Відстеження зміни selectedCountry
+        const newSelected = optionsRef.current.selectedCountry;
+        const newBlocks = optionsRef.current.countryBlocks;
+        const newCountryData = optionsRef.current.countryData;
+
+        if (newSelected !== lastSelectedRef.current) {
+          lastSelectedRef.current = newSelected;
+          if (newSelected && newCountryData) {
+            // Перейти на рівень країни
+            countryGroup.visible = false;
+            tweenCameraTo(newCountryData.lat, newCountryData.lng);
+            buildBlockCluster(newBlocks ?? [], newCountryData.lat, newCountryData.lng);
+          } else {
+            // Повернутись на рівень світу
+            countryGroup.visible = true;
+            clearBlockCluster();
+            controls.autoRotate = optionsRef.current.mode === 'auto';
+          }
+        }
 
         // Rebuild country markers if data changed
         const newCountries = optionsRef.current.countries;
