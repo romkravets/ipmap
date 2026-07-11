@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useReducer, type Dispatch } from "react";
-import type { AppState } from "@sessionmap/types";
+import type { AppState } from "@ipmap/types";
 import { reducer, initialState, type Action } from "./reducer";
 import { usePrices } from "@/hooks/usePrices";
 

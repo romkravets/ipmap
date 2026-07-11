@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from 'react'
-import type { WhaleEvent } from '@sessionmap/types'
+import type { WhaleEvent } from '@ipmap/types'
 
 const TYPE_COLORS: Record<WhaleEvent['type'], string> = {
   transfer: '#FBBF24',

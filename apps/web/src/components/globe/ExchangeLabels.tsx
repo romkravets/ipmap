@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, memo } from "react";
 import { EXCHANGES, SESSION_COLORS_HEX } from "@/lib/constants";
-import type { GlobeMode } from "@sessionmap/types";
+import type { GlobeMode } from "@ipmap/types";
 
 interface Position {
   x: number;

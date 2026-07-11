@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { SessionInfo } from '@sessionmap/types'
+import type { SessionInfo } from '@ipmap/types'
 import { getSessionInfo } from '@/lib/session-logic'
 import { useAppContext } from '@/contexts/AppContext'
 

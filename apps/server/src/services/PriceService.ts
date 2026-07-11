@@ -1,4 +1,4 @@
-import type { PriceSnapshot, MarketMeta } from "@sessionmap/types";
+import type { PriceSnapshot, MarketMeta } from "@ipmap/types";
 
 const priceCache = new Map<string, { price: number; change24h: number }>();
 

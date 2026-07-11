@@ -2,7 +2,7 @@
 
 import { memo } from 'react'
 import { computeAltcoinSeason } from '@/lib/altcoin-season'
-import type { PriceSnapshot } from '@sessionmap/types'
+import type { PriceSnapshot } from '@ipmap/types'
 
 interface AltcoinSeasonBadgeProps {
   prices: PriceSnapshot

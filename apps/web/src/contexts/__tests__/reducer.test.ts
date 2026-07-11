@@ -8,7 +8,7 @@ import type {
   LiquidationEvent,
   FundingRateMap,
   EthGas,
-} from '@sessionmap/types'
+} from '@ipmap/types'
 
 describe('reducer – initialState', () => {
   it('has prices for major symbols', () => {

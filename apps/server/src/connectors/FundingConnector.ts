@@ -1,5 +1,5 @@
 import { broadcast } from "../ws/broadcaster.js";
-import type { FundingRateMap } from "@sessionmap/types";
+import type { FundingRateMap } from "@ipmap/types";
 
 // Kraken Futures perpetual symbols → internal symbol
 const KRAKEN_MAP: Record<string, string> = {

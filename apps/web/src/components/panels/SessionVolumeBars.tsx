@@ -2,7 +2,7 @@
 
 import { memo } from 'react'
 import { EXCHANGES, SESSION_COLORS_CSS, SESSION_LABELS } from '@/lib/constants'
-import type { SessionRegion } from '@sessionmap/types'
+import type { SessionRegion } from '@ipmap/types'
 
 const REGIONS: SessionRegion[] = ['asia', 'europe', 'americas']
 

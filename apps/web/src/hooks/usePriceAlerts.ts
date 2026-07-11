@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { PriceSnapshot } from '@sessionmap/types'
+import type { PriceSnapshot } from '@ipmap/types'
 
 export interface PriceAlert {
   id: string

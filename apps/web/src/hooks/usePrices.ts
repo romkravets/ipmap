@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import type { PriceSnapshot, WsStatus } from '@sessionmap/types'
+import type { PriceSnapshot, WsStatus } from '@ipmap/types'
 import type { Dispatch } from 'react'
 import type { Action } from '@/contexts/reducer'
 

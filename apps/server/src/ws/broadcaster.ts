@@ -1,5 +1,5 @@
 import { WebSocketServer, WebSocket } from "ws";
-import type { WsMessage } from "@sessionmap/types";
+import type { WsMessage } from "@ipmap/types";
 
 const clients = new Set<WebSocket>();
 

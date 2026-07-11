@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type { PriceSnapshot } from '@sessionmap/types'
+import type { PriceSnapshot } from '@ipmap/types'
 
 const MAX_POINTS = 100
 

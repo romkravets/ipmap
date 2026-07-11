@@ -1,5 +1,5 @@
 import { broadcast } from "../ws/broadcaster.js";
-import type { EthGas } from "@sessionmap/types";
+import type { EthGas } from "@ipmap/types";
 
 const API_KEY = process.env.ETHERSCAN_API_KEY ?? "";
 

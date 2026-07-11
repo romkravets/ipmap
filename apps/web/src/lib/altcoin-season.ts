@@ -1,4 +1,4 @@
-import type { PriceSnapshot } from '@sessionmap/types'
+import type { PriceSnapshot } from '@ipmap/types'
 
 const ALTCOINS = ['ETH', 'SOL', 'BNB', 'XRP'] as const
 

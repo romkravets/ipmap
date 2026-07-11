@@ -10,7 +10,7 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
-      "@sessionmap/types": ["../../packages/types/dist/index.d.ts"]
+      "@ipmap/types": ["../../packages/types/dist/index.d.ts"]
     }
   },
   "include": ["src/**/*"],

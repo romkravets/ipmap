@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react'
-import type { TweakValues, GlobeMode } from '@sessionmap/types'
+import type { TweakValues, GlobeMode } from '@ipmap/types'
 import { useAppContext } from '@/contexts/AppContext'
 
 const CSS = `

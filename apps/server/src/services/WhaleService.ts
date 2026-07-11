@@ -1,4 +1,4 @@
-import type { WhaleEvent } from "@sessionmap/types";
+import type { WhaleEvent } from "@ipmap/types";
 import { broadcast } from "../ws/broadcaster.js";
 import { getLastRealWhaleTs } from "../connectors/WhaleConnector.js";
 

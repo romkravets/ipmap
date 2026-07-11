@@ -2,7 +2,7 @@
 
 import { useRef, memo } from 'react'
 import { useGlobe } from '@/hooks/useGlobe'
-import type { GlobeMode, TweakValues } from '@sessionmap/types'
+import type { GlobeMode, TweakValues } from '@ipmap/types'
 
 interface GlobeSceneProps {
   mode: GlobeMode

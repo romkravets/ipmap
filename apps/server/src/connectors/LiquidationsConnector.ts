@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import { broadcast } from "../ws/broadcaster.js";
-import type { LiquidationEvent } from "@sessionmap/types";
+import type { LiquidationEvent } from "@ipmap/types";
 
 const SYMBOL_MAP: Record<string, string> = {
   BTCUSDT: "BTC", ETHUSDT: "ETH", SOLUSDT: "SOL",

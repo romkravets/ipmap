@@ -1,7 +1,7 @@
 'use client'
 
 import { memo } from 'react'
-import type { GlobeMode } from '@sessionmap/types'
+import type { GlobeMode } from '@ipmap/types'
 
 const MODE_META: Record<GlobeMode, { label: string; icon: string; tip: string }> = {
   auto:    { label: 'Auto',       icon: '↺', tip: 'Slow auto-rotation' },

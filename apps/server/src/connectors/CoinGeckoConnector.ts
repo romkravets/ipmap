@@ -1,4 +1,4 @@
-import type { MarketMeta } from "@sessionmap/types";
+import type { MarketMeta } from "@ipmap/types";
 import { getCachedMeta, setCachedMeta, setCachedPrice, notifyPriceUpdate } from "../services/PriceService.js";
 
 const COINGECKO_URL =

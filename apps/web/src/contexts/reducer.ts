@@ -1,4 +1,4 @@
-import type { AppState, PriceSnapshot, MarketMeta, WhaleEvent, LiquidationEvent, FundingRateMap, EthGas, CommodityData, GlobeMode, TweakValues } from '@sessionmap/types'
+import type { AppState, PriceSnapshot, MarketMeta, WhaleEvent, LiquidationEvent, FundingRateMap, EthGas, CommodityData, GlobeMode, TweakValues } from '@ipmap/types'
 import { TWEAK_DEFAULTS } from '@/lib/constants'
 
 export type Action =

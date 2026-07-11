@@ -2,7 +2,7 @@
 
 import { useState, memo } from 'react'
 import type { PriceAlert } from '@/hooks/usePriceAlerts'
-import type { PriceSnapshot } from '@sessionmap/types'
+import type { PriceSnapshot } from '@ipmap/types'
 
 const SYMBOLS = ['BTC', 'ETH', 'SOL', 'BNB', 'XRP']
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { z } from "zod";
 import { useAppContext } from "@/contexts/AppContext";
-import type { PriceSnapshot } from "@sessionmap/types";
+import type { PriceSnapshot } from "@ipmap/types";
 
 const PriceEntrySchema = z.object({ price: z.number(), change24h: z.number() });
 const PricesMessageSchema = z.object({

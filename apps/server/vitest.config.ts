@@ -7,7 +7,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@sessionmap/types': path.resolve(__dirname, '../../packages/types/src/index.ts'),
+      '@ipmap/types': path.resolve(__dirname, '../../packages/types/src/index.ts'),
     },
   },
 })

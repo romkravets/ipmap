@@ -10,7 +10,7 @@ import type {
   FundingRateMap,
   EthGas,
   MarketMeta,
-} from "@sessionmap/types";
+} from "@ipmap/types";
 import { SESSION_LABELS, SESSION_COLORS_CSS } from "@/lib/constants";
 import { formatCountdown } from "@/lib/session-logic";
 import { GlobeModeBar } from "./GlobeModeBar";

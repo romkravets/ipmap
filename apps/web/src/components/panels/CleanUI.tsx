@@ -10,7 +10,7 @@ import type {
   PriceSnapshot,
   SessionInfo,
   WhaleEvent,
-} from "@sessionmap/types";
+} from "@ipmap/types";
 import { memo } from "react";
 import { AltcoinSeasonBadge } from "./AltcoinSeasonBadge";
 import { GlobeModeBar } from "./GlobeModeBar";

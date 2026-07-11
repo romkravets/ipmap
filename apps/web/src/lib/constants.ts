@@ -1,4 +1,4 @@
-import type { Exchange } from "@sessionmap/types";
+import type { Exchange } from "@ipmap/types";
 
 // ── Traditional Stock Markets ─────────────────────────────────────────────────
 

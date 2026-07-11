@@ -12,7 +12,7 @@ import { usePriceAlerts } from "@/hooks/usePriceAlerts";
 import { useStockTicker } from "@/hooks/useStockTicker";
 import { useCorrelation } from "@/hooks/useCorrelation";
 import { getSunLatLng } from "@/lib/session-logic";
-import type { GlobeMode } from "@sessionmap/types";
+import type { GlobeMode } from "@ipmap/types";
 import { TweaksPanel } from "@/components/panels/TweaksPanel";
 import { PriceAlertsPanel } from "@/components/panels/PriceAlertsPanel";
 import { LoadingBar } from "@/components/panels/LoadingBar";

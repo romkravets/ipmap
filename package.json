@@ -1,14 +1,12 @@
 {
-  "name": "sessionmap",
+  "name": "ipmap",
   "private": true,
   "scripts": {
-    "dl-roads": "node scripts/download-roads.mjs",
-    "dl-textures": "node scripts/download-textures.mjs",
-    "dl-railroads": "node scripts/download-railroads.mjs",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "type-check": "turbo run type-check"
+    "type-check": "turbo run type-check",
+    "build-data": "node scripts/build-ipv4-data.mjs"
   },
   "devDependencies": {
     "eslint": "^9",

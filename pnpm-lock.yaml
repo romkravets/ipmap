@@ -20,7 +20,7 @@ importers:
 
   apps/server:
     dependencies:
-      '@sessionmap/types':
+      '@ipmap/types':
         specifier: workspace:*
         version: link:../../packages/types
       '@types/express':
@@ -57,7 +57,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@sessionmap/types':
+      '@ipmap/types':
         specifier: workspace:*
         version: link:../../packages/types
       '@types/node':

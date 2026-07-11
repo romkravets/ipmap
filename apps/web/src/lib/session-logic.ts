@@ -1,4 +1,4 @@
-import type { SessionInfo, SessionRegion } from '@sessionmap/types'
+import type { SessionInfo, SessionRegion } from '@ipmap/types'
 import { SESSION_TIMES } from './constants'
 
 export function getSessionInfo(timeOffsetHours = 0): SessionInfo {
