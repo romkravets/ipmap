@@ -2,7 +2,7 @@
 
 import { TWEAK_DEFAULTS } from "@/lib/constants";
 import { getSunLatLng } from "@/lib/sun";
-import type { GlobeMode, TweakValues } from "@ipmap/types";
+import type { GlobeMode, TweakValues, CountryAlloc } from "@ipmap/types";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
@@ -172,6 +172,8 @@ async function loadOrbitControls() {
 export interface UseGlobeOptions {
   mode: GlobeMode;
   tweaks: TweakValues;
+  countries?: CountryAlloc[];
+  onCountryClick?: (cc: string) => void;
 }
 
 export function useGlobe(
@@ -1059,9 +1061,92 @@ export function useGlobe(
         },
       };
 
+      // ── Country markers ───────────────────────────────────────────────────────────
+      const countryGroup = new THREE.Group();
+      scene.add(countryGroup);
+
+      interface CountryMeshEntry {
+        dot: THREE.Mesh;
+        ring: THREE.Mesh;
+        cc: string;
+      }
+      const countryMeshes: CountryMeshEntry[] = [];
+
+      function buildCountryMarkers(countries: CountryAlloc[]) {
+        // Очистити попередні маркери
+        for (const entry of countryMeshes) {
+          countryGroup.remove(entry.dot, entry.ring);
+          entry.dot.geometry.dispose();
+          entry.ring.geometry.dispose();
+          (entry.dot.material as THREE.Material).dispose();
+          (entry.ring.material as THREE.Material).dispose();
+        }
+        countryMeshes.length = 0;
+
+        if (!countries.length) return;
+
+        const maxLog = Math.log10(Math.max(...countries.map(c => c.ipCount)));
+
+        for (const country of countries) {
+          const pos = latLngToVec3(country.lat, country.lng, 1.015);
+          const logRatio = Math.log10(Math.max(country.ipCount, 1)) / maxLog; // 0..1
+          const r = 0.005 + logRatio * 0.018;
+
+          // Колір: холодний синій (мало) → теплий жовтогарячий (багато)
+          const col = new THREE.Color().setHSL(0.6 - logRatio * 0.55, 0.9, 0.55);
+
+          const dot = new THREE.Mesh(
+            new THREE.CircleGeometry(r, 16),
+            new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide }),
+          );
+          dot.position.copy(pos);
+          dot.userData.cc = country.cc;
+
+          const ring = new THREE.Mesh(
+            new THREE.RingGeometry(r * 1.6, r * 2.2, 24),
+            new THREE.MeshBasicMaterial({
+              color: col,
+              transparent: true,
+              opacity: 0.3,
+              side: THREE.DoubleSide,
+              depthWrite: false,
+            }),
+          );
+          ring.position.copy(pos);
+
+          countryGroup.add(dot, ring);
+          countryMeshes.push({ dot, ring, cc: country.cc });
+        }
+      }
+
+      // Збудувати маркери якщо дані вже є при ініціалізації
+      if (optionsRef.current.countries?.length) {
+        buildCountryMarkers(optionsRef.current.countries);
+      }
+
+      // ── Raycasting click ──────────────────────────────────────────────────────────
+      const raycaster = new THREE.Raycaster();
+      const onCanvasClick = (e: MouseEvent) => {
+        const rect = canvas.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        raycaster.setFromCamera(mouse, camera);
+        const dots = countryMeshes.map(m => m.dot);
+        const hits = raycaster.intersectObjects(dots);
+        if (hits.length > 0) {
+          const cc = hits[0].object.userData.cc as string;
+          optionsRef.current.onCountryClick?.(cc);
+        }
+      };
+      canvas.addEventListener('click', onCanvasClick);
+
       // ── Animation loop ────────────────────────────────────────────────────
       let elapsed = 0;
       const clock = new THREE.Clock();
+      // Відстежуємо зміни масиву countries між рендерами
+      const lastCountriesRef = { current: optionsRef.current.countries };
 
       function animate() {
         if (!mounted) return;
@@ -1128,6 +1213,27 @@ export function useGlobe(
 
         window.globeCamDist = camera.position.length();
         controls.update();
+
+        // Rebuild country markers if data changed
+        const newCountries = optionsRef.current.countries;
+        if (newCountries !== lastCountriesRef.current) {
+          lastCountriesRef.current = newCountries;
+          if (newCountries) buildCountryMarkers(newCountries);
+        }
+
+        // Маркери завжди дивляться на камеру (billboard)
+        for (const m of countryMeshes) {
+          m.dot.quaternion.copy(camera.quaternion);
+          m.ring.quaternion.copy(camera.quaternion);
+          if (tweaks.markerPulse) {
+            const s = 1 + 0.4 * Math.sin(elapsed * 1.2);
+            m.ring.scale.setScalar(s);
+            (m.ring.material as THREE.MeshBasicMaterial).opacity = 0.3 * (2 - s) * 0.5;
+          } else {
+            (m.ring.material as THREE.MeshBasicMaterial).opacity = 0;
+          }
+        }
+
         renderer.render(scene, camera);
         if (firstFrame) {
           firstFrame = false;
@@ -1149,6 +1255,7 @@ export function useGlobe(
       return () => {
         mounted = false;
         cancelAnimationFrame(animId);
+        canvas.removeEventListener('click', onCanvasClick);
         window.removeEventListener("resize", onResize);
         renderer.dispose();
         tradeMaterials.forEach((m) => m.dispose());

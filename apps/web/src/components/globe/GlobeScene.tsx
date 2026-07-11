@@ -2,16 +2,18 @@
 
 import { useRef, memo } from 'react'
 import { useGlobe } from '@/hooks/useGlobe'
-import type { GlobeMode, TweakValues } from '@ipmap/types'
+import type { GlobeMode, TweakValues, CountryAlloc } from '@ipmap/types'
 
 interface GlobeSceneProps {
   mode: GlobeMode
   tweaks: TweakValues
+  countries?: CountryAlloc[]
+  onCountryClick?: (cc: string) => void
 }
 
-export const GlobeScene = memo(function GlobeScene({ mode, tweaks }: GlobeSceneProps) {
+export const GlobeScene = memo(function GlobeScene({ mode, tweaks, countries, onCountryClick }: GlobeSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  useGlobe(canvasRef, { mode, tweaks })
+  useGlobe(canvasRef, { mode, tweaks, countries, onCountryClick })
 
   return (
     <canvas
