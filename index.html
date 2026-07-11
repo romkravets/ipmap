@@ -1,0 +1,1513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SessionMap — Crypto Trading Sessions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:               #0A0E1A;
+    --bg-panel:         #111520;
+    --bg-panel2:        #0d1120;
+    --fg:               #E8ECF4;
+    --fg-muted:         #6B7489;
+    --fg-dim:           #3d4560;
+    --accent:           #7DD3FC;
+    --accent-warm:      #FBBF24;
+    --session-asia:     #A78BFA;
+    --session-europe:   #34D399;
+    --session-americas: #F472B6;
+    --overlap:          #FDE047;
+    --danger:           #F87171;
+    --border:           rgba(255,255,255,0.06);
+    --border-terminal:  #1a2830;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: 'Inter', system-ui, sans-serif;
+    color: var(--fg);
+  }
+
+  #globe-canvas {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+  }
+
+  #ui-root {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  body.terminal-mode {
+    --bg: #000000;
+    --fg: #00FF9F;
+    --fg-muted: #00a066;
+    --fg-dim: #003322;
+    --accent: #00E5FF;
+    --bg-panel: #030a06;
+    --bg-panel2: #020804;
+    --border: #0e2018;
+    --border-terminal: #0e2018;
+  }
+
+  .mode-transition {
+    transition: background 0.4s ease, color 0.4s ease;
+  }
+
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+  .font-display { font-family: 'Instrument Serif', serif; }
+</style>
+</head>
+<body class="mode-transition">
+
+<canvas id="globe-canvas"></canvas>
+<div id="ui-root"></div>
+
+<!-- ══════════════════════════════════════════════
+     GLOBE — Three.js
+══════════════════════════════════════════════ -->
+<script>
+(function () {
+  const canvas = document.getElementById('globe-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 0, 2.8);
+
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.05;
+  controls.minDistance = 1.5;
+  controls.maxDistance = 6;
+  controls.enablePan = false;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.3;
+
+  // ── Starfield ───────────────────────────────────
+  const starPos = new Float32Array(3000 * 3);
+  for (let i = 0; i < starPos.length; i++) starPos[i] = (Math.random() - 0.5) * 600;
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  scene.add(new THREE.Points(starGeo,
+    new THREE.PointsMaterial({ color: 0xffffff, size: 0.2, sizeAttenuation: true, transparent: true, opacity: 0.6 })
+  ));
+
+  // ── Helpers ─────────────────────────────────────
+  function latLngToVec3(lat, lng, r) {
+    r = r !== undefined ? r : 1;
+    var phi   = (90 - lat) * (Math.PI / 180);
+    var theta = (lng + 180) * (Math.PI / 180);
+    return new THREE.Vector3(
+      -r * Math.sin(phi) * Math.cos(theta),
+       r * Math.cos(phi),
+       r * Math.sin(phi) * Math.sin(theta)
+    );
+  }
+
+  function getSunLatLng(date) {
+    var doy = Math.floor((date - new Date(date.getFullYear(), 0, 0)) / 86400000);
+    var declination = -23.45 * Math.cos(((doy + 10) / 365) * 2 * Math.PI);
+    var utcH = date.getUTCHours() + date.getUTCMinutes() / 60 + date.getUTCSeconds() / 3600;
+    var sunLng = (12 - utcH) * 15;
+    return { lat: declination, lng: sunLng };
+  }
+
+  // ── Globe shaders ────────────────────────────────
+  var VERT = `
+    varying vec2 vUv;
+    varying vec3 vNormal;
+    void main() {
+      vUv = uv;
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  var FRAG = `
+    uniform sampler2D dayTex;
+    uniform sampler2D nightTex;
+    uniform vec3 sunDir;
+    uniform bool hasTextures;
+    varying vec2 vUv;
+    varying vec3 vNormal;
+
+    void main() {
+      vec3 N = normalize(vNormal);
+      vec3 S = normalize(sunDir);
+      float d = dot(N, S);
+
+      float dayBlend   = smoothstep(-0.05, 0.15, d);
+      float nightBlend = smoothstep(0.08, -0.08, d);
+
+      vec4 day, night;
+      if (hasTextures) {
+        day   = texture2D(dayTex,   vUv);
+        night = texture2D(nightTex, vUv);
+        night.rgb = night.rgb * 2.8 * nightBlend;
+      } else {
+        float lng = (vUv.x - 0.5) * 6.28318;
+        float lat = (vUv.y - 0.5) * 3.14159;
+        float land  = sin(lng * 1.8) * cos(lat * 2.2) * 0.5
+                    + sin(lng * 3.1 + 0.9) * cos(lat * 1.4 + 0.5) * 0.35
+                    + sin(lng * 0.9 - 1.2) * cos(lat * 3.0 - 0.3) * 0.25;
+        land = smoothstep(0.18, 0.42, land);
+        float polar = smoothstep(0.75, 0.95, abs(vUv.y * 2.0 - 1.0));
+        vec3 dayRGB = mix(vec3(0.04, 0.16, 0.42), vec3(0.14, 0.30, 0.12), land);
+        dayRGB = mix(dayRGB, vec3(0.75, 0.83, 0.88), polar);
+        day   = vec4(dayRGB, 1.0);
+        night = vec4(mix(vec3(0.01, 0.03, 0.10), vec3(0.22, 0.18, 0.04), land) * nightBlend * 2.0, 1.0);
+      }
+
+      vec3 col = mix(night.rgb, day.rgb, dayBlend);
+
+      float termGlow = exp(-abs(d) * 12.0) * 0.22;
+      col = mix(col, vec3(0.85, 0.42, 0.12), termGlow * (1.0 - dayBlend * 0.7));
+
+      col += (1.0 - nightBlend) * (1.0 - dayBlend) * 0.012;
+
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  var ATMO_VERT = `
+    varying vec3 vNormal;
+    void main() {
+      vNormal = normalize(normalMatrix * normal);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `;
+
+  var ATMO_FRAG = `
+    uniform vec3 sunDir;
+    varying vec3 vNormal;
+    void main() {
+      float rim = 1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0)));
+      rim = pow(rim, 2.8);
+      float day = clamp(dot(normalize(vNormal), normalize(sunDir)) * 1.5 + 0.5, 0.0, 1.0);
+      vec3 dayColor   = vec3(0.25, 0.55, 0.95);
+      vec3 nightColor = vec3(0.05, 0.08, 0.22);
+      vec3 col = mix(nightColor, dayColor, day);
+      gl_FragColor = vec4(col * rim, rim * 0.75);
+    }
+  `;
+
+  // ── Earth mesh ───────────────────────────────────
+  var uniforms = {
+    dayTex:      { value: null },
+    nightTex:    { value: null },
+    sunDir:      { value: new THREE.Vector3(1, 0.2, 0.3).normalize() },
+    hasTextures: { value: false },
+  };
+
+  var globeGeo = new THREE.SphereGeometry(1, 72, 72);
+  var globeMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: FRAG, uniforms });
+  var globeMesh = new THREE.Mesh(globeGeo, globeMat);
+  scene.add(globeMesh);
+
+  var loader = new THREE.TextureLoader();
+  loader.crossOrigin = 'anonymous';
+
+  var dayLoaded = false, nightLoaded = false;
+  function checkTexturesReady() {
+    if (dayLoaded && nightLoaded) uniforms.hasTextures.value = true;
+  }
+
+  var dayURLs = [
+    'https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg',
+    'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/textures/planets/earth_atmos_2048.jpg',
+    'https://raw.githubusercontent.com/chrisrzhou/react-globe/main/textures/globe.jpg',
+  ];
+  var nightURLs = [
+    'https://unpkg.com/three-globe@2.31.1/example/img/earth-night.jpg',
+    'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/textures/planets/earth_lights_2048.png',
+  ];
+
+  function tryLoad(urls, uniform, onDone) {
+    if (!urls.length) { onDone(); return; }
+    loader.load(urls[0],
+      function(t) { uniform.value = t; onDone(); },
+      undefined,
+      function() { tryLoad(urls.slice(1), uniform, onDone); }
+    );
+  }
+  tryLoad(dayURLs,   uniforms.dayTex,   function() { dayLoaded   = true; checkTexturesReady(); });
+  tryLoad(nightURLs, uniforms.nightTex, function() { nightLoaded = true; checkTexturesReady(); });
+
+  // ── Atmosphere ───────────────────────────────────
+  var atmoMat = new THREE.ShaderMaterial({
+    vertexShader: ATMO_VERT,
+    fragmentShader: ATMO_FRAG,
+    uniforms: { sunDir: uniforms.sunDir },
+    transparent: true,
+    side: THREE.FrontSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.06, 64, 64), atmoMat));
+
+  // ── Terminator ring ──────────────────────────────
+  var TERM_SEGS = 256;
+  var termPositions = new Float32Array((TERM_SEGS + 1) * 3);
+  var termGeo = new THREE.BufferGeometry();
+  termGeo.setAttribute('position', new THREE.BufferAttribute(termPositions, 3));
+  var termLine = new THREE.Line(termGeo,
+    new THREE.LineBasicMaterial({ color: 0xffa040, transparent: true, opacity: 0.55, depthWrite: false })
+  );
+  scene.add(termLine);
+
+  function updateTerminator(sunDir) {
+    var u = new THREE.Vector3();
+    var v = new THREE.Vector3();
+    var up = Math.abs(sunDir.y) < 0.99 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+    u.crossVectors(sunDir, up).normalize();
+    v.crossVectors(sunDir, u).normalize();
+    var R = 1.014;
+    var pos = termGeo.attributes.position.array;
+    for (var i = 0; i <= TERM_SEGS; i++) {
+      var a = (i / TERM_SEGS) * Math.PI * 2;
+      pos[i * 3 + 0] = (Math.cos(a) * u.x + Math.sin(a) * v.x) * R;
+      pos[i * 3 + 1] = (Math.cos(a) * u.y + Math.sin(a) * v.y) * R;
+      pos[i * 3 + 2] = (Math.cos(a) * u.z + Math.sin(a) * v.z) * R;
+    }
+    termGeo.attributes.position.needsUpdate = true;
+  }
+
+  // ── Sun marker ───────────────────────────────────
+  var sunMarker = new THREE.Mesh(
+    new THREE.SphereGeometry(0.018, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0xFFD060 })
+  );
+  var sunGlow = new THREE.Mesh(
+    new THREE.SphereGeometry(0.04, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0xFFAA20, transparent: true, opacity: 0.25, depthWrite: false })
+  );
+  scene.add(sunMarker);
+  scene.add(sunGlow);
+
+  // ── Exchanges — 20 major venues ──────────────────
+  var EXCHANGES = [
+    { id:'binance',  name:'Binance',   city:'Singapore',     lat:  1.35, lng: 103.82, vol: 76.4, share:32, pairs:1400, region:'asia',     year:2017 },
+    { id:'okx',      name:'OKX',       city:'Hong Kong',     lat: 22.30, lng: 114.17, vol: 28.1, share:12, pairs: 680, region:'asia',     year:2017 },
+    { id:'bybit',    name:'Bybit',     city:'Dubai',         lat: 25.20, lng:  55.27, vol: 24.5, share:10, pairs: 520, region:'asia',     year:2018 },
+    { id:'coinbase', name:'Coinbase',  city:'San Francisco', lat: 37.77, lng:-122.42, vol: 18.2, share: 8, pairs: 280, region:'americas', year:2012 },
+    { id:'htx',      name:'HTX',       city:'Singapore',     lat:  1.28, lng: 103.86, vol: 14.3, share: 6, pairs: 760, region:'asia',     year:2013 },
+    { id:'kucoin',   name:'KuCoin',    city:'Singapore',     lat:  1.32, lng: 103.78, vol: 10.8, share: 5, pairs: 800, region:'asia',     year:2017 },
+    { id:'deribit',  name:'Deribit',   city:'Amsterdam',     lat: 52.37, lng:   4.90, vol:  9.6, share: 4, pairs: 120, region:'europe',   year:2016 },
+    { id:'kraken',   name:'Kraken',    city:'San Francisco', lat: 37.80, lng:-122.45, vol:  8.4, share: 4, pairs: 240, region:'americas', year:2011 },
+    { id:'bitfinex', name:'Bitfinex',  city:'London',        lat: 51.50, lng:  -0.12, vol:  7.1, share: 3, pairs: 190, region:'europe',   year:2012 },
+    { id:'upbit',    name:'Upbit',     city:'Seoul',         lat: 37.56, lng: 126.97, vol:  6.8, share: 3, pairs: 250, region:'asia',     year:2017 },
+    { id:'gate',     name:'Gate.io',   city:'Singapore',     lat:  1.29, lng: 103.85, vol:  6.2, share: 3, pairs:1700, region:'asia',     year:2013 },
+    { id:'mexc',     name:'MEXC',      city:'Singapore',     lat:  1.31, lng: 103.88, vol:  5.5, share: 2, pairs:2100, region:'asia',     year:2018 },
+    { id:'bitmex',   name:'BitMEX',    city:'Hong Kong',     lat: 22.28, lng: 114.15, vol:  4.8, share: 2, pairs:  60, region:'asia',     year:2014 },
+    { id:'bithumb',  name:'Bithumb',   city:'Seoul',         lat: 37.57, lng: 126.99, vol:  4.2, share: 2, pairs: 210, region:'asia',     year:2014 },
+    { id:'gemini',   name:'Gemini',    city:'New York',      lat: 40.71, lng: -74.00, vol:  3.5, share: 1, pairs: 120, region:'americas', year:2014 },
+    { id:'bitstamp', name:'Bitstamp',  city:'Luxembourg',    lat: 49.61, lng:   6.13, vol:  2.9, share: 1, pairs:  90, region:'europe',   year:2011 },
+    { id:'phemex',   name:'Phemex',    city:'Singapore',     lat:  1.34, lng: 103.80, vol:  2.4, share: 1, pairs: 320, region:'asia',     year:2019 },
+    { id:'coincheck',name:'Coincheck', city:'Tokyo',         lat: 35.68, lng: 139.69, vol:  2.1, share: 1, pairs:  30, region:'asia',     year:2012 },
+    { id:'luno',     name:'Luno',      city:'London',        lat: 51.51, lng:  -0.09, vol:  1.2, share: 1, pairs:  20, region:'europe',   year:2013 },
+    { id:'bittrex',  name:'Bittrex',   city:'Seattle',       lat: 47.61, lng:-122.33, vol:  0.9, share: 0, pairs: 300, region:'americas', year:2014 },
+  ];
+
+  var SESSION_COLORS_3D = {
+    asia:     new THREE.Color(0xa78bfa),
+    europe:   new THREE.Color(0x34d399),
+    americas: new THREE.Color(0xf472b6),
+  };
+
+  var markerGroup = new THREE.Group();
+  scene.add(markerGroup);
+  var markerMeshes = [];
+
+  EXCHANGES.forEach(function(ex) {
+    var pos = latLngToVec3(ex.lat, ex.lng, 1.012);
+    var r = 0.008 + Math.log(ex.vol + 1) * 0.004;
+    var col = SESSION_COLORS_3D[ex.region];
+    var dot  = new THREE.Mesh(new THREE.SphereGeometry(r, 10, 10), new THREE.MeshBasicMaterial({ color: col }));
+    var ring = new THREE.Mesh(new THREE.SphereGeometry(r * 2.5, 10, 10), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.2, depthWrite: false }));
+    dot.position.copy(pos);
+    ring.position.copy(pos);
+    markerGroup.add(dot, ring);
+    markerMeshes.push({ dot, ring, phase: Math.random() * Math.PI * 2, ex });
+  });
+
+  // ── 3D→2D projection for React labels ────────────
+  window.exchangeData = EXCHANGES;
+  window.globeProject = function(lat, lng) {
+    var pos = latLngToVec3(lat, lng, 1.0);
+    var camDir = camera.position.clone().normalize();
+    var facing = pos.dot(camDir);
+    var v = pos.clone().project(camera);
+    return {
+      x: (v.x + 1) / 2 * window.innerWidth,
+      y: (-v.y + 1) / 2 * window.innerHeight,
+      visible: facing > 0.15,
+    };
+  };
+
+  // ── Session meridian lines ────────────────────────
+  function makeMeridian(centerLng, color, segs) {
+    segs = segs || 120;
+    var pts = [];
+    for (var i = 0; i <= segs; i++) pts.push(latLngToVec3(-75 + (i / segs) * 150, centerLng, 1.018));
+    var geo = new THREE.BufferGeometry().setFromPoints(pts);
+    return new THREE.Line(geo, new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.5, depthWrite: false }));
+  }
+  var sessionLines = {
+    asia:     makeMeridian( 115, 0xa78bfa),
+    europe:   makeMeridian(  10, 0x34d399),
+    americas: makeMeridian(-100, 0xf472b6),
+  };
+  Object.values(sessionLines).forEach(function(l) { l.visible = false; scene.add(l); });
+
+  // ── Globe modes ──────────────────────────────────
+  var globeMode = 'auto';
+  var followTarget = new THREE.Vector3();
+
+  function setGlobeMode(mode) {
+    globeMode = mode;
+    if (mode === 'auto') {
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.3;
+      controls.enabled = true;
+    } else if (mode === 'free') {
+      controls.autoRotate = false;
+      controls.enabled = true;
+    } else if (mode === 'follow') {
+      controls.autoRotate = false;
+      controls.enabled = true;
+    }
+    window.globeState.mode = mode;
+  }
+
+  window.globeState = {
+    sessionLines, controls, globeMesh, uniforms,
+    mode: globeMode,
+    setMode: setGlobeMode,
+    setAutoRotate: function(v) { controls.autoRotate = v; },
+    getSunLatLng: getSunLatLng,
+  };
+
+  window.timeOffsetHours = 0;
+
+  // ── Whale Arc System ──────────────────────────────
+  function greatCircleArc(p1, p2, peakAlt, segments) {
+    segments = segments || 64;
+    var pts = [];
+    for (var i = 0; i <= segments; i++) {
+      var t = i / segments;
+      var pt = new THREE.Vector3().lerpVectors(p1, p2, t).normalize();
+      var alt = 1 + peakAlt * Math.sin(t * Math.PI);
+      pts.push(pt.multiplyScalar(alt));
+    }
+    return pts;
+  }
+
+  var WHALE_TYPES = [
+    { label:'transfer', color: new THREE.Color(0xFBBF24) },
+    { label:'deposit',  color: new THREE.Color(0x7DD3FC) },
+    { label:'withdraw', color: new THREE.Color(0xF472B6) },
+    { label:'dex',      color: new THREE.Color(0x34D399) },
+  ];
+
+  var whaleGroup = new THREE.Group();
+  scene.add(whaleGroup);
+  var activeArcs = [];
+
+  function spawnWhaleArc() {
+    var exList = window.exchangeData;
+    if (!exList || exList.length < 2) return;
+
+    var i1 = Math.floor(Math.random() * exList.length);
+    var i2 = Math.floor(Math.random() * (exList.length - 1));
+    if (i2 >= i1) i2++;
+
+    var ex1 = exList[i1];
+    var ex2 = exList[i2];
+    var p1 = latLngToVec3(ex1.lat, ex1.lng, 1);
+    var p2 = latLngToVec3(ex2.lat, ex2.lng, 1);
+
+    var dist = p1.distanceTo(p2);
+    var peakAlt = 0.08 + dist * 0.14;
+
+    var arcPts = greatCircleArc(p1, p2, peakAlt);
+
+    var type = WHALE_TYPES[Math.floor(Math.random() * WHALE_TYPES.length)];
+    var amountBTC = Math.floor(Math.random() * 4500 + 200);
+    var lineOpacity = 0.15 + Math.min(amountBTC / 5000, 1) * 0.35;
+
+    var geo = new THREE.BufferGeometry().setFromPoints(arcPts);
+    var mat = new THREE.LineBasicMaterial({
+      color: type.color,
+      transparent: true,
+      opacity: lineOpacity,
+      depthWrite: false,
+    });
+    var line = new THREE.Line(geo, mat);
+    whaleGroup.add(line);
+
+    var dotSize = 0.009 + Math.min(amountBTC / 5000, 1) * 0.016;
+    var dotMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(dotSize, 8, 8),
+      new THREE.MeshBasicMaterial({ color: type.color, depthWrite: false })
+    );
+    var glowMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(dotSize * 2.5, 8, 8),
+      new THREE.MeshBasicMaterial({ color: type.color, transparent: true, opacity: 0.25, depthWrite: false })
+    );
+    whaleGroup.add(dotMesh, glowMesh);
+
+    var tailGeo = new THREE.BufferGeometry().setFromPoints([arcPts[0], arcPts[0]]);
+    var tailMat = new THREE.LineBasicMaterial({ color: type.color, transparent: true, opacity: 0.7, depthWrite: false });
+    var tail = new THREE.Line(tailGeo, tailMat);
+    whaleGroup.add(tail);
+
+    activeArcs.push({
+      line, dotMesh, glowMesh, tail, tailMat, mat,
+      arcPts, progress: 0, born: elapsed,
+      lifetime: 5.5, type, amountBTC, ex1, ex2,
+    });
+
+    if (window.onWhaleArc) window.onWhaleArc({ type: type.label, amount: amountBTC, from: ex1.name, to: ex2.name });
+  }
+
+  function updateWhaleArcs() {
+    var TAIL_SEGS = 12;
+    for (var i = activeArcs.length - 1; i >= 0; i--) {
+      var arc = activeArcs[i];
+      var age = elapsed - arc.born;
+      var lifeRatio = age / arc.lifetime;
+
+      if (lifeRatio >= 1) {
+        whaleGroup.remove(arc.line, arc.dotMesh, arc.glowMesh, arc.tail);
+        arc.line.geometry.dispose(); arc.line.material.dispose();
+        arc.tail.geometry.dispose(); arc.tail.material.dispose();
+        arc.dotMesh.geometry.dispose(); arc.dotMesh.material.dispose();
+        arc.glowMesh.geometry.dispose(); arc.glowMesh.material.dispose();
+        activeArcs.splice(i, 1);
+        continue;
+      }
+
+      var t = lifeRatio;
+      arc.progress = t < 0.85 ? (t / 0.85) : 1;
+
+      var alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+      arc.mat.opacity = (0.12 + Math.min(arc.amountBTC / 5000, 1) * 0.3) * alpha;
+      arc.tailMat.opacity = 0.7 * alpha;
+      arc.dotMesh.material.opacity = alpha;
+      arc.glowMesh.material.opacity = 0.25 * alpha;
+
+      var idx = Math.floor(arc.progress * (arc.arcPts.length - 1));
+      arc.dotMesh.position.copy(arc.arcPts[idx]);
+      arc.glowMesh.position.copy(arc.arcPts[idx]);
+
+      var tailStart = Math.max(0, idx - TAIL_SEGS);
+      var tailPts = arc.arcPts.slice(tailStart, idx + 1);
+      if (tailPts.length > 1) {
+        arc.tail.geometry.setFromPoints(tailPts);
+      }
+    }
+  }
+
+  var nextSpawn = 3;
+  function tickWhaleSpawner(dt) {
+    nextSpawn -= dt;
+    if (nextSpawn <= 0) {
+      spawnWhaleArc();
+      nextSpawn = 3 + Math.random() * 4;
+    }
+  }
+
+  // ── Animation loop ────────────────────────────────
+  var elapsed = 0;
+  var clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    var dt = clock.getDelta();
+    elapsed += dt;
+
+    var simDate = new Date(Date.now() + (window.timeOffsetHours || 0) * 3600000);
+    var sunLL = getSunLatLng(simDate);
+    var sunVec = latLngToVec3(sunLL.lat, sunLL.lng, 1).normalize();
+    uniforms.sunDir.value.copy(sunVec);
+
+    updateTerminator(sunVec);
+
+    var sunPos = latLngToVec3(sunLL.lat, sunLL.lng, 1.025);
+    sunMarker.position.copy(sunPos);
+    sunGlow.position.copy(sunPos);
+    var pulse = 1 + 0.2 * Math.sin(elapsed * 2.5);
+    sunGlow.scale.setScalar(pulse);
+
+    if (globeMode === 'follow') {
+      var dist = camera.position.length();
+      followTarget.copy(sunVec).multiplyScalar(dist);
+      camera.position.lerp(followTarget, 0.005);
+      camera.position.setLength(dist);
+    }
+
+    markerMeshes.forEach(function(m) {
+      if (window.tweakPulse === false) {
+        m.ring.material.opacity = 0;
+        return;
+      }
+      var s = 1 + 0.5 * Math.sin(elapsed * 1.4 + m.phase);
+      m.ring.scale.setScalar(s);
+      m.ring.material.opacity = 0.18 * (2.2 - s);
+    });
+
+    tickWhaleSpawner(dt);
+    updateWhaleArcs();
+
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+
+  window.addEventListener('resize', function() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+})();
+</script>
+
+<!-- ══════════════════════════════════════════════
+     UI — React + Tweaks Panel (inlined)
+══════════════════════════════════════════════ -->
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback, createContext, useContext } = React;
+
+// ── Tweaks panel ─────────────────────────────────
+const __TWEAKS_STYLE = `
+  .twk-panel{position:fixed;right:16px;bottom:16px;z-index:2147483646;width:280px;
+    max-height:calc(100vh - 32px);display:flex;flex-direction:column;
+    background:rgba(10,14,26,.92);color:#E8ECF4;
+    -webkit-backdrop-filter:blur(24px) saturate(160%);backdrop-filter:blur(24px) saturate(160%);
+    border:.5px solid rgba(125,211,252,.18);border-radius:14px;
+    box-shadow:0 12px 40px rgba(0,0,0,.5);
+    font:11.5px/1.4 'Inter',ui-sans-serif,system-ui,sans-serif;overflow:hidden}
+  .twk-hd{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 8px 10px 14px;cursor:move;user-select:none;
+    border-bottom:.5px solid rgba(255,255,255,.06)}
+  .twk-hd b{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+    color:rgba(125,211,252,.8)}
+  .twk-x{appearance:none;border:0;background:transparent;color:rgba(232,236,244,.4);
+    width:22px;height:22px;border-radius:6px;cursor:default;font-size:13px;line-height:1}
+  .twk-x:hover{background:rgba(255,255,255,.06);color:#E8ECF4}
+  .twk-body{padding:8px 14px 14px;display:flex;flex-direction:column;gap:10px;
+    overflow-y:auto;overflow-x:hidden;min-height:0;
+    scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.1) transparent}
+  .twk-body::-webkit-scrollbar{width:4px}
+  .twk-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:4px}
+  .twk-row{display:flex;flex-direction:column;gap:5px}
+  .twk-row-h{flex-direction:row;align-items:center;justify-content:space-between;gap:10px}
+  .twk-lbl{display:flex;justify-content:space-between;align-items:baseline;
+    color:rgba(232,236,244,.6)}
+  .twk-lbl>span:first-child{font-weight:500;font-size:11px}
+  .twk-val{color:rgba(125,211,252,.7);font-variant-numeric:tabular-nums;font-family:'JetBrains Mono',monospace}
+  .twk-sect{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+    color:rgba(125,211,252,.45);padding:8px 0 0;border-top:.5px solid rgba(255,255,255,.05)}
+  .twk-sect:first-child{padding-top:0;border-top:none}
+  .twk-slider{appearance:none;-webkit-appearance:none;width:100%;height:3px;margin:6px 0;
+    border-radius:999px;background:rgba(255,255,255,.1);outline:none}
+  .twk-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;
+    width:14px;height:14px;border-radius:50%;background:#7DD3FC;
+    border:none;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:default}
+  .twk-slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;
+    background:#7DD3FC;border:none;box-shadow:0 1px 4px rgba(0,0,0,.4);cursor:default}
+  .twk-toggle{position:relative;width:32px;height:18px;border:0;border-radius:999px;
+    background:rgba(255,255,255,.12);transition:background .15s;cursor:default;padding:0;flex-shrink:0}
+  .twk-toggle[data-on="1"]{background:#7DD3FC}
+  .twk-toggle i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .15s;display:block}
+  .twk-toggle[data-on="1"] i{transform:translateX(14px)}
+  .twk-btn-nav{appearance:none;width:100%;height:30px;padding:0 10px;border:1px solid rgba(255,255,255,.1);
+    border-radius:6px;background:transparent;color:rgba(232,236,244,.6);
+    font:inherit;font-size:11px;font-family:'JetBrains Mono',monospace;cursor:default;
+    text-align:left;display:flex;align-items:center;justify-content:space-between;transition:all .15s}
+  .twk-btn-nav:hover{background:rgba(255,255,255,.04);color:#E8ECF4}
+  .twk-btn-nav.active{background:rgba(125,211,252,.1);border-color:rgba(125,211,252,.4);color:#7DD3FC}
+  .twk-key-row{display:flex;justify-content:space-between;font-size:11px;
+    font-family:'JetBrains Mono',monospace;color:rgba(107,116,137,1);line-height:2}
+  .twk-key-row span:first-child{color:#7DD3FC}
+`;
+
+const TweaksCtx = createContext(null);
+
+function useTweaks(defaults) {
+  const [values, setValues] = useState(defaults);
+  const setTweak = useCallback((key, val) => {
+    setValues(prev => ({ ...prev, [key]: val }));
+  }, []);
+  return [values, setTweak];
+}
+
+function TweaksPanel({ title = 'Tweaks', tweaks, setTweak, children }) {
+  const [open, setOpen] = useState(false);
+  const dragRef = useRef(null);
+  const offsetRef = useRef({ x: 16, y: 16 });
+  const PAD = 16;
+
+  const clampToViewport = useCallback(() => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const w = panel.offsetWidth, h = panel.offsetHeight;
+    const maxRight = Math.max(PAD, window.innerWidth - w - PAD);
+    const maxBottom = Math.max(PAD, window.innerHeight - h - PAD);
+    offsetRef.current = {
+      x: Math.min(maxRight, Math.max(PAD, offsetRef.current.x)),
+      y: Math.min(maxBottom, Math.max(PAD, offsetRef.current.y)),
+    };
+    panel.style.right = offsetRef.current.x + 'px';
+    panel.style.bottom = offsetRef.current.y + 'px';
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    clampToViewport();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(clampToViewport) : null;
+    if (ro) { ro.observe(document.documentElement); return () => ro.disconnect(); }
+    window.addEventListener('resize', clampToViewport);
+    return () => window.removeEventListener('resize', clampToViewport);
+  }, [open, clampToViewport]);
+
+  useEffect(() => {
+    const onMsg = e => {
+      const t = e?.data?.type;
+      if (t === '__activate_edit_mode') setOpen(true);
+      else if (t === '__deactivate_edit_mode') setOpen(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key === 'e' || e.key === 'E') {
+        if (e.target.tagName !== 'INPUT') setOpen(m => !m);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const dismiss = () => {
+    setOpen(false);
+    window.parent.postMessage({ type: '__edit_mode_dismissed' }, '*');
+  };
+
+  const onDragStart = e => {
+    const panel = dragRef.current;
+    if (!panel) return;
+    const r = panel.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY;
+    const startRight = window.innerWidth - r.right;
+    const startBottom = window.innerHeight - r.bottom;
+    const move = ev => {
+      offsetRef.current = {
+        x: startRight - (ev.clientX - sx),
+        y: startBottom - (ev.clientY - sy),
+      };
+      clampToViewport();
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  };
+
+  if (!open) return null;
+
+  return (
+    <TweaksCtx.Provider value={{ tweaks, setTweak }}>
+      <style>{__TWEAKS_STYLE}</style>
+      <div ref={dragRef} className="twk-panel" style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
+        <div className="twk-hd" onMouseDown={onDragStart}>
+          <b>{title}</b>
+          <button className="twk-x" aria-label="Close" onMouseDown={e => e.stopPropagation()} onClick={dismiss}>✕</button>
+        </div>
+        <div className="twk-body">{children}</div>
+      </div>
+    </TweaksCtx.Provider>
+  );
+}
+
+function TweakSection({ title, label, children }) {
+  const name = title || label;
+  return (
+    <>
+      <div className="twk-sect">{name}</div>
+      {children}
+    </>
+  );
+}
+
+function TweakSlider({ id, label, min = 0, max = 100, step = 1, unit = '', value: valueProp, onChange: onChangeProp }) {
+  const ctx = useContext(TweaksCtx);
+  const value = id !== undefined ? ctx?.tweaks?.[id] : valueProp;
+  const onChange = id !== undefined ? v => ctx?.setTweak?.(id, v) : onChangeProp;
+  return (
+    <div className="twk-row">
+      <div className="twk-lbl">
+        <span>{label}</span>
+        <span className="twk-val">{value}{unit}</span>
+      </div>
+      <input type="range" className="twk-slider" min={min} max={max} step={step}
+             value={value} onChange={e => onChange(Number(e.target.value))} />
+    </div>
+  );
+}
+
+function TweakToggle({ id, label, value: valueProp, onChange: onChangeProp }) {
+  const ctx = useContext(TweaksCtx);
+  const value = id !== undefined ? ctx?.tweaks?.[id] : valueProp;
+  const onChange = id !== undefined ? v => ctx?.setTweak?.(id, v) : onChangeProp;
+  return (
+    <div className="twk-row twk-row-h">
+      <div className="twk-lbl"><span>{label}</span></div>
+      <button type="button" className="twk-toggle" data-on={value ? '1' : '0'}
+              role="switch" aria-checked={!!value}
+              onClick={() => onChange(!value)}><i /></button>
+    </div>
+  );
+}
+
+// ── Session logic ─────────────────────────────────
+function getSessionInfo() {
+  const now = new Date();
+  const utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
+
+  const sessions = {
+    asia:     { start: 0,  end: 9  },
+    europe:   { start: 7,  end: 16 },
+    americas: { start: 13, end: 22 },
+  };
+
+  const active = Object.entries(sessions)
+    .filter(([, s]) => utcH >= s.start && utcH < s.end)
+    .map(([k]) => k);
+
+  const events = [];
+  Object.entries(sessions).forEach(([key, s]) => {
+    const isActive = active.includes(key);
+    if (isActive) {
+      let diff = s.end - utcH;
+      if (diff < 0) diff += 24;
+      events.push({ type: 'close', session: key, hours: diff });
+    } else {
+      let diff = s.start - utcH;
+      if (diff < 0) diff += 24;
+      events.push({ type: 'open', session: key, hours: diff });
+    }
+  });
+  events.sort((a, b) => a.hours - b.hours);
+  const nextEvent = events[0];
+
+  let volatility = 'low';
+  if (active.length === 2) volatility = 'high';
+  else if (active.length === 1) volatility = 'medium';
+
+  return { active, nextEvent, volatility, utcH };
+}
+
+function formatCountdown(hours) {
+  const h = Math.floor(hours);
+  const m = Math.floor((hours - h) * 60);
+  if (h === 0) return `${m}m`;
+  return `${h}h ${m}m`;
+}
+
+// ── Price simulation ──────────────────────────────
+const BASE_PRICES = { BTC: 67234, ETH: 3412, SOL: 156, BNB: 612, XRP: 0.524 };
+
+function usePrices() {
+  const [prices, setPrices] = useState(BASE_PRICES);
+  const [changes, setChanges] = useState({ BTC: 0.42, ETH: -0.18, SOL: 1.23, BNB: 0.05, XRP: -0.33 });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPrices(prev => {
+        const next = {};
+        Object.keys(prev).forEach(k => {
+          const delta = (Math.random() - 0.495) * prev[k] * 0.0006;
+          next[k] = prev[k] + delta;
+        });
+        return next;
+      });
+      setChanges(prev => {
+        const next = {};
+        Object.keys(prev).forEach(k => { next[k] = prev[k] + (Math.random() - 0.5) * 0.04; });
+        return next;
+      });
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return { prices, changes };
+}
+
+// ── Live feed ─────────────────────────────────────
+const FEED_TEMPLATES = [
+  t => `BTC ${t.BTC >= 0 ? '+' : ''}${t.BTC.toFixed(2)}%`,
+  t => `ETH vol spike $${(Math.random()*2+0.5).toFixed(1)}M`,
+  t => `SOL liquidation $${(Math.random()*500+100).toFixed(0)}K`,
+  t => `WHALE ${Math.floor(Math.random()*5000+500)} BTC`,
+  t => `LIQ BTC $${(Math.random()*3+1).toFixed(1)}M`,
+  t => `ETH ${t.ETH >= 0 ? '+' : ''}${t.ETH.toFixed(2)}%`,
+  t => `Open interest +${(Math.random()*2+0.5).toFixed(1)}%`,
+  t => `WHALE ${Math.floor(Math.random()*20000+5000)} ETH`,
+];
+
+function useLiveFeed(enabled) {
+  const [feed, setFeed] = useState([]);
+  const changesRef = useRef({ BTC: 0.42, ETH: -0.18 });
+
+  useEffect(() => {
+    if (!enabled) return;
+    const interval = setInterval(() => {
+      const now = new Date();
+      const time = `${String(now.getUTCHours()).padStart(2,'0')}:${String(now.getUTCMinutes()).padStart(2,'0')}:${String(now.getUTCSeconds()).padStart(2,'0')}`;
+      const tmpl = FEED_TEMPLATES[Math.floor(Math.random() * FEED_TEMPLATES.length)];
+      const msg = tmpl(changesRef.current);
+      setFeed(prev => [{ time, msg, id: Date.now() }, ...prev].slice(0, 40));
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [enabled]);
+
+  return feed;
+}
+
+// ── Helpers ────────────────────────────────────────
+const SESSION_LABELS = { asia: 'Asia', europe: 'Europe', americas: 'Americas' };
+const SESSION_COLORS_CSS = {
+  asia:     'var(--session-asia)',
+  europe:   'var(--session-europe)',
+  americas: 'var(--session-americas)',
+};
+const SESSION_CSS = { asia:'#a78bfa', europe:'#34d399', americas:'#f472b6' };
+
+const FEAR_GREED = 62;
+function fgLabel(n) {
+  if (n < 25) return 'Extreme Fear';
+  if (n < 45) return 'Fear';
+  if (n < 55) return 'Neutral';
+  if (n < 75) return 'Greed';
+  return 'Extreme Greed';
+}
+
+// ── Exchange Labels overlay ───────────────────────
+function ExchangeLabels({ hoveredId, onHover }) {
+  const [positions, setPositions] = useState({});
+  const rafRef = useRef();
+
+  useEffect(() => {
+    const exchanges = window.exchangeData || [];
+    const update = () => {
+      if (!window.globeProject) { rafRef.current = requestAnimationFrame(update); return; }
+      const next = {};
+      exchanges.forEach(ex => { next[ex.id] = window.globeProject(ex.lat, ex.lng); });
+      setPositions(next);
+      rafRef.current = requestAnimationFrame(update);
+    };
+    rafRef.current = requestAnimationFrame(update);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  const exchanges = window.exchangeData || [];
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {exchanges.map(ex => {
+        const pos = positions[ex.id];
+        if (!pos || !pos.visible) return null;
+        const isHovered = hoveredId === ex.id;
+        const col = SESSION_CSS[ex.region];
+        const isLarge = ex.vol >= 18;
+        const isMed = ex.vol >= 6;
+
+        return (
+          <div
+            key={ex.id}
+            onMouseEnter={() => onHover(ex.id)}
+            onMouseLeave={() => onHover(null)}
+            style={{
+              position: 'absolute',
+              left: pos.x, top: pos.y,
+              transform: 'translate(-50%, -50%)',
+              pointerEvents: 'all',
+              cursor: 'pointer',
+              zIndex: isHovered ? 100 : Math.floor(ex.vol),
+            }}
+          >
+            <div style={{
+              width: isLarge ? 10 : isMed ? 7 : 5,
+              height: isLarge ? 10 : isMed ? 7 : 5,
+              borderRadius: '50%',
+              background: col,
+              boxShadow: `0 0 ${isHovered ? 12 : 6}px ${col}`,
+              margin: 'auto',
+              transition: 'box-shadow 0.2s',
+            }} />
+
+            {(isLarge || isHovered) && (
+              <div style={{
+                position: 'absolute',
+                left: '50%', top: '-22px',
+                transform: 'translateX(-50%)',
+                whiteSpace: 'nowrap',
+                background: 'rgba(10,14,26,0.88)',
+                border: `1px solid ${col}44`,
+                borderRadius: '4px',
+                padding: '2px 7px',
+                fontSize: '9px',
+                fontFamily: 'JetBrains Mono, monospace',
+                color: col,
+                letterSpacing: '0.06em',
+                pointerEvents: 'none',
+              }}>
+                {ex.name}
+              </div>
+            )}
+
+            {isHovered && (
+              <div style={{
+                position: 'absolute',
+                left: '14px', top: '-10px',
+                width: '180px',
+                background: 'rgba(8,11,20,0.97)',
+                border: `1px solid ${col}55`,
+                borderRadius: '8px',
+                padding: '10px 12px',
+                pointerEvents: 'none',
+                zIndex: 200,
+                boxShadow: `0 4px 24px rgba(0,0,0,0.6), 0 0 0 1px ${col}22`,
+              }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:'7px' }}>
+                  <span style={{ fontFamily:'JetBrains Mono,monospace', fontSize:'12px', fontWeight:600, color: col }}>{ex.name}</span>
+                  <span style={{ fontSize:'9px', color:'var(--fg-muted)', fontFamily:'JetBrains Mono,monospace' }}>{ex.year}</span>
+                </div>
+                <div style={{ fontSize:'9px', color:'var(--fg-muted)', marginBottom:'8px', fontFamily:'JetBrains Mono,monospace' }}>
+                  {ex.city}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'4px 8px' }}>
+                  {[
+                    ['24h Vol', `$${ex.vol.toFixed(1)}B`],
+                    ['Share',   `${ex.share}%`],
+                    ['Pairs',   `${ex.pairs.toLocaleString()}`],
+                    ['Region',  ex.region.charAt(0).toUpperCase() + ex.region.slice(1)],
+                  ].map(([k, v]) => (
+                    <React.Fragment key={k}>
+                      <span style={{ fontSize:'9px', color:'var(--fg-muted)', fontFamily:'JetBrains Mono,monospace' }}>{k}</span>
+                      <span style={{ fontSize:'10px', color:'var(--fg)', fontFamily:'JetBrains Mono,monospace', fontWeight:500 }}>{v}</span>
+                    </React.Fragment>
+                  ))}
+                </div>
+                <div style={{ marginTop:'8px', height:'2px', background:'rgba(255,255,255,0.07)', borderRadius:'2px' }}>
+                  <div style={{ width:`${Math.min(100, ex.share * 3)}%`, height:'100%', background: col, borderRadius:'2px' }} />
+                </div>
+                <div style={{ fontSize:'8px', color:'var(--fg-muted)', fontFamily:'JetBrains Mono,monospace', marginTop:'3px' }}>
+                  market share
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Globe mode bar ────────────────────────────────
+const TWEAK_DEFAULTS = {
+  rotationSpeed: 30,
+  showTerminator: true,
+  showSunMarker: true,
+  markerPulse: true,
+  timeOffset: 0,
+};
+
+const MODE_META = {
+  auto:   { label: 'Auto',       icon: '↺', tip: 'Slow auto-rotation' },
+  free:   { label: 'Free',       icon: '✦', tip: 'Drag to explore' },
+  follow: { label: 'Follow Sun', icon: '☀', tip: 'Camera tracks dayside' },
+};
+
+function GlobeModeBar({ mode, onChange }) {
+  return (
+    <div style={{ display: 'flex', gap: '4px', pointerEvents: 'all' }}>
+      {Object.entries(MODE_META).map(([key, meta]) => {
+        const active = mode === key;
+        return (
+          <button
+            key={key}
+            onClick={() => onChange(key)}
+            title={meta.tip}
+            style={{
+              background: active ? 'rgba(125,211,252,0.12)' : 'rgba(255,255,255,0.03)',
+              border: `1px solid ${active ? 'var(--accent)' : 'rgba(255,255,255,0.08)'}`,
+              borderRadius: '6px',
+              padding: '5px 11px',
+              cursor: 'pointer',
+              color: active ? 'var(--accent)' : 'var(--fg-muted)',
+              fontSize: '11px',
+              fontFamily: 'JetBrains Mono, monospace',
+              letterSpacing: '0.04em',
+              display: 'flex', alignItems: 'center', gap: '5px',
+              transition: 'all 0.2s ease',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <span style={{ fontSize: '13px', lineHeight: 1 }}>{meta.icon}</span>
+            {meta.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ╔════════════════════════════════════════════╗
+// ║  CLEAN MODE UI                             ║
+// ╚════════════════════════════════════════════╝
+function CleanUI({ session, prices, changes, onToggleTerminal, globeMode, onGlobeModeChange, sunInfo, whaleEvents }) {
+  const { active, nextEvent, volatility } = session;
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', padding: '20px 28px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+
+      {/* Top bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+          <span style={{ fontFamily: 'Instrument Serif, serif', fontSize: '18px', letterSpacing: '0.02em', color: 'var(--fg)', opacity: 0.9 }}>
+            SessionMap
+          </span>
+          <span style={{ fontSize: '10px', color: 'var(--fg-muted)', letterSpacing: '0.12em', textTransform: 'uppercase', fontWeight: 500 }}>
+            beta
+          </span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <GlobeModeBar mode={globeMode} onChange={onGlobeModeChange} />
+          <button
+            onClick={onToggleTerminal}
+            style={{ pointerEvents: 'all', background: 'none', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '5px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '7px', color: 'var(--fg-muted)', fontSize: '11px', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.08em', transition: 'all 0.3s ease' }}
+          >
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--fg-dim)', display: 'inline-block' }}></span>
+            Terminal
+          </button>
+        </div>
+      </div>
+
+      {/* Sun info strip — only in follow mode */}
+      {globeMode === 'follow' && sunInfo && (
+        <div style={{ alignSelf: 'center', background: 'rgba(255,200,50,0.07)', border: '1px solid rgba(255,200,50,0.15)', borderRadius: '8px', padding: '6px 16px', display: 'flex', gap: '18px', alignItems: 'center' }}>
+          <span style={{ fontSize: '12px', color: '#FFD060', fontFamily: 'JetBrains Mono, monospace' }}>
+            ☀ {sunInfo.lat > 0 ? 'N' : 'S'}{Math.abs(sunInfo.lat).toFixed(1)}°  {sunInfo.lng > 0 ? 'E' : 'W'}{Math.abs(sunInfo.lng).toFixed(1)}°
+          </span>
+          <span style={{ fontSize: '11px', color: 'var(--fg-muted)' }}>Solar noon meridian</span>
+        </div>
+      )}
+
+      {/* Whale ticker strip */}
+      {whaleEvents && whaleEvents.length > 0 && (
+        <div style={{ display:'flex', flexDirection:'column', gap:'3px', alignSelf:'flex-start', maxWidth:'320px' }}>
+          {whaleEvents.slice(0,3).map(w => {
+            const typeColor = w.type === 'transfer' ? '#FBBF24' : w.type === 'deposit' ? '#7DD3FC' : w.type === 'withdraw' ? '#F472B6' : '#34D399';
+            return (
+              <div key={w.id} style={{ display:'flex', gap:'8px', alignItems:'center', background:'rgba(255,255,255,0.03)', border:`1px solid ${typeColor}22`, borderRadius:'5px', padding:'4px 10px' }}>
+                <span style={{ fontSize:'9px', color: typeColor, fontFamily:'JetBrains Mono,monospace', fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', minWidth:'52px' }}>{w.type}</span>
+                <span style={{ fontSize:'10px', fontFamily:'JetBrains Mono,monospace', color:'var(--fg)', fontWeight:500 }}>{w.amount.toLocaleString()} BTC</span>
+                <span style={{ fontSize:'9px', color:'var(--fg-muted)', fontFamily:'JetBrains Mono,monospace' }}>{w.from} → {w.to}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Bottom row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+
+        {/* Session status */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxWidth: '280px' }}>
+          {active.length === 0 ? (
+            <div style={{ fontSize: '22px', fontWeight: 300, color: 'var(--fg-muted)' }}>Markets quiet</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {active.map(s => (
+                <div key={s} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: SESSION_COLORS_CSS[s], boxShadow: `0 0 8px ${SESSION_COLORS_CSS[s]}`, flexShrink: 0 }}></span>
+                  <span style={{ fontSize: active.length > 1 ? '16px' : '22px', fontWeight: 300, color: 'var(--fg)', letterSpacing: '-0.01em' }}>
+                    {SESSION_LABELS[s]} active
+                  </span>
+                  {active.length > 1 && (
+                    <span style={{ fontSize: '10px', background: 'var(--overlap)', color: '#000', padding: '1px 6px', borderRadius: '3px', fontFamily: 'JetBrains Mono, monospace', fontWeight: 600 }}>
+                      OVERLAP
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {nextEvent && (
+            <div style={{ fontSize: '12px', color: 'var(--fg-muted)', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.01em', marginTop: '2px' }}>
+              {SESSION_LABELS[nextEvent.session]} {nextEvent.type === 'open' ? 'opens' : 'closes'} in{' '}
+              <span style={{ color: 'var(--fg)', fontWeight: 500 }}>{formatCountdown(nextEvent.hours)}</span>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+            <span style={{ fontSize: '10px', color: 'var(--fg-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 500 }}>Volatility</span>
+            <span style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', color: volatility === 'high' ? 'var(--danger)' : volatility === 'medium' ? 'var(--accent-warm)' : 'var(--fg-muted)', fontWeight: 500 }}>
+              {volatility.toUpperCase()}
+            </span>
+          </div>
+        </div>
+
+        {/* Price ticker */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+          {Object.entries(prices).slice(0, 3).map(([sym, price]) => {
+            const chg = changes[sym];
+            const isPos = chg >= 0;
+            return (
+              <div key={sym} style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+                <span style={{ fontSize: '11px', color: 'var(--fg-muted)', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.08em', minWidth: '28px', textAlign: 'right' }}>{sym}</span>
+                <span style={{ fontSize: '14px', fontFamily: 'JetBrains Mono, monospace', color: 'var(--fg)', fontWeight: 500, minWidth: '72px', textAlign: 'right' }}>
+                  {price >= 1000 ? price.toFixed(0) : price.toFixed(3)}
+                </span>
+                <span style={{ fontSize: '11px', fontFamily: 'JetBrains Mono, monospace', color: isPos ? 'var(--session-europe)' : 'var(--danger)', minWidth: '48px', textAlign: 'right' }}>
+                  {isPos ? '+' : ''}{chg.toFixed(2)}%
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ╔════════════════════════════════════════════╗
+// ║  TERMINAL MODE UI                          ║
+// ╚════════════════════════════════════════════╝
+function TerminalUI({ session, prices, changes, feed, onToggleTerminal }) {
+  const { active, nextEvent, volatility, utcH } = session;
+
+  const panelStyle = {
+    background: 'var(--bg-panel)',
+    border: '1px solid var(--border)',
+    padding: '14px 16px',
+    display: 'flex', flexDirection: 'column', gap: '6px',
+    fontFamily: 'JetBrains Mono, monospace',
+    fontSize: '11px', color: 'var(--fg)',
+    overflow: 'hidden',
+  };
+
+  const headerStyle = {
+    fontSize: '9px', color: 'var(--fg-muted)',
+    letterSpacing: '0.15em', textTransform: 'uppercase',
+    borderBottom: '1px solid var(--border)',
+    paddingBottom: '6px', marginBottom: '4px',
+  };
+
+  const rowStyle = {
+    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+  };
+
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', pointerEvents: 'none' }}>
+
+      {/* Top bar */}
+      <div style={{ padding: '10px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', background: 'var(--bg-panel2)', flexShrink: 0 }}>
+        <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: 'var(--fg-muted)', letterSpacing: '0.08em' }}>
+          <span style={{ color: 'var(--accent)', marginRight: '8px' }}>&gt;&gt;</span>
+          SESSIONMAP v0.1.0 — TERMINAL
+        </div>
+        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '10px', color: 'var(--fg-muted)' }}>
+            UTC {String(Math.floor(utcH)).padStart(2,'0')}:{String(Math.floor((utcH % 1)*60)).padStart(2,'0')}
+          </span>
+          <button
+            onClick={onToggleTerminal}
+            style={{ pointerEvents: 'all', background: 'none', border: '1px solid var(--border)', padding: '3px 10px', cursor: 'pointer', color: 'var(--fg-muted)', fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.08em' }}
+          >
+            [EXIT]
+          </button>
+        </div>
+      </div>
+
+      {/* Main: left | globe | right */}
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '220px 1fr 220px', overflow: 'hidden' }}>
+
+        {/* LEFT: Session status */}
+        <div style={{ ...panelStyle, borderRight: '1px solid var(--border)', borderBottom: 'none', borderTop: 'none', borderLeft: 'none' }}>
+          <div style={headerStyle}>SESSION STATUS</div>
+
+          {active.length === 0 ? (
+            <div style={{ color: 'var(--fg-muted)' }}>&gt; ALL CLOSED</div>
+          ) : active.map(s => (
+            <div key={s} style={{ ...rowStyle }}>
+              <span style={{ color: SESSION_COLORS_CSS[s] }}>&gt;&gt; {SESSION_LABELS[s].toUpperCase()}</span>
+              <span style={{ color: 'var(--accent)', fontSize: '9px' }}>LIVE</span>
+            </div>
+          ))}
+
+          {active.length > 1 && (
+            <div style={{ color: 'var(--overlap)', fontSize: '10px', marginTop: '2px' }}>⚡ OVERLAP ACTIVE</div>
+          )}
+
+          <div style={{ marginTop: '4px' }}></div>
+          {nextEvent && (
+            <>
+              <div style={{ color: 'var(--fg-muted)', fontSize: '10px' }}>NEXT EVENT</div>
+              <div style={{ ...rowStyle }}>
+                <span style={{ color: SESSION_COLORS_CSS[nextEvent.session] }}>
+                  {SESSION_LABELS[nextEvent.session].toUpperCase()} {nextEvent.type === 'open' ? 'OPEN' : 'CLOSE'}
+                </span>
+                <span style={{ fontWeight: 500 }}>{formatCountdown(nextEvent.hours)}</span>
+              </div>
+            </>
+          )}
+
+          <div style={{ marginTop: '4px' }}></div>
+          <div style={{ ...rowStyle }}>
+            <span style={{ color: 'var(--fg-muted)' }}>VOLATILITY</span>
+            <span style={{ color: volatility === 'high' ? 'var(--danger)' : volatility === 'medium' ? 'var(--accent-warm)' : 'var(--fg-muted)' }}>
+              {volatility.toUpperCase()}
+            </span>
+          </div>
+          <div style={{ ...rowStyle }}>
+            <span style={{ color: 'var(--fg-muted)' }}>F&amp;G INDEX</span>
+            <span style={{ color: 'var(--accent-warm)' }}>{FEAR_GREED} — {fgLabel(FEAR_GREED).toUpperCase()}</span>
+          </div>
+
+          <div style={{ marginTop: '8px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+            <div style={{ color: 'var(--fg-muted)', fontSize: '10px', marginBottom: '6px' }}>ACTIVE SESSIONS</div>
+            {['asia','europe','americas'].map(s => (
+              <div key={s} style={{ ...rowStyle, marginBottom: '3px' }}>
+                <span style={{ color: active.includes(s) ? SESSION_COLORS_CSS[s] : 'var(--fg-dim)' }}>
+                  {active.includes(s) ? '▶' : '○'} {SESSION_LABELS[s].toUpperCase().padEnd(10)}
+                </span>
+                <span style={{ color: active.includes(s) ? 'var(--fg)' : 'var(--fg-dim)', fontSize: '10px' }}>
+                  {s === 'asia' ? '00–09' : s === 'europe' ? '07–16' : '13–22'} UTC
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CENTER: globe (transparent space) */}
+        <div style={{ position: 'relative' }}></div>
+
+        {/* RIGHT: Live feed */}
+        <div style={{ ...panelStyle, borderLeft: '1px solid var(--border)', borderBottom: 'none', borderTop: 'none', borderRight: 'none' }}>
+          <div style={headerStyle}>LIVE FEED</div>
+          <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            {feed.slice(0, 20).map(entry => (
+              <div key={entry.id} style={{ display: 'flex', gap: '8px', fontSize: '10px' }}>
+                <span style={{ color: 'var(--fg-muted)', flexShrink: 0 }}>{entry.time}</span>
+                <span style={{ color: entry.msg.includes('WHALE') ? 'var(--accent-warm)' : entry.msg.includes('LIQ') ? 'var(--danger)' : 'var(--fg)' }}>
+                  {entry.msg}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom: price grid */}
+      <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-panel2)', display: 'flex', flexShrink: 0 }}>
+        {Object.entries(prices).map(([sym, price]) => {
+          const chg = changes[sym];
+          const isPos = chg >= 0;
+          return (
+            <div key={sym} style={{ flex: 1, padding: '8px 16px', borderRight: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'center', fontFamily: 'JetBrains Mono, monospace' }}>
+              <span style={{ fontSize: '10px', color: 'var(--fg-muted)', letterSpacing: '0.08em' }}>{sym}</span>
+              <span style={{ fontSize: '13px', color: 'var(--fg)', fontWeight: 500 }}>
+                {price >= 1000 ? price.toFixed(0) : price.toFixed(4)}
+              </span>
+              <span style={{ fontSize: '10px', color: isPos ? 'var(--session-europe)' : 'var(--danger)' }}>
+                {isPos ? '+' : ''}{chg.toFixed(2)}%
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ╔════════════════════════════════════════════╗
+// ║  APP ROOT                                  ║
+// ╚════════════════════════════════════════════╝
+function App() {
+  const [terminalMode, setTerminalMode] = useState(false);
+  const [globeMode, setGlobeModeState] = useState(() => localStorage.getItem('sm-globe-mode') || 'auto');
+  const [session, setSession] = useState(getSessionInfo());
+  const [sunInfo, setSunInfo] = useState(null);
+  const [hoveredExchange, setHoveredExchange] = useState(null);
+  const { prices, changes } = usePrices();
+  const feed = useLiveFeed(terminalMode);
+  const [whaleEvents, setWhaleEvents] = useState([]);
+  const [tweaks, setTweak] = useTweaks(TWEAK_DEFAULTS);
+
+  // Wire whale arc events from globe
+  useEffect(() => {
+    window.onWhaleArc = ({ type, amount, from, to }) => {
+      const now = new Date();
+      const time = `${String(now.getUTCHours()).padStart(2,'0')}:${String(now.getUTCMinutes()).padStart(2,'0')}:${String(now.getUTCSeconds()).padStart(2,'0')}`;
+      setWhaleEvents(prev => [{ id: Date.now(), time, type, amount, from, to }, ...prev].slice(0, 8));
+    };
+    return () => { window.onWhaleArc = null; };
+  }, []);
+
+  // Update session + sun info every 5s
+  useEffect(() => {
+    const tick = () => {
+      setSession(getSessionInfo());
+      if (window.globeState?.getSunLatLng) {
+        const sl = window.globeState.getSunLatLng(new Date(Date.now() + (window.timeOffsetHours || 0) * 3600000));
+        setSunInfo({ lat: sl.lat, lng: sl.lng });
+      }
+    };
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Sync terminal mode → body class + session lines
+  useEffect(() => {
+    document.body.classList.toggle('terminal-mode', terminalMode);
+    if (window.globeState) {
+      Object.entries(window.globeState.sessionLines).forEach(([s, line]) => {
+        line.visible = terminalMode && session.active.includes(s);
+      });
+    }
+  }, [terminalMode, session.active]);
+
+  // Sync globe mode
+  const handleGlobeModeChange = useCallback(mode => {
+    setGlobeModeState(mode);
+    localStorage.setItem('sm-globe-mode', mode);
+    if (window.globeState?.setMode) window.globeState.setMode(mode);
+  }, []);
+
+  // Apply saved mode once globe ready
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (window.globeState?.setMode) window.globeState.setMode(globeMode);
+    }, 600);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Sync rotation speed
+  useEffect(() => {
+    if (window.globeState && globeMode === 'auto') {
+      window.globeState.controls.autoRotateSpeed = tweaks.rotationSpeed / 100;
+    }
+  }, [tweaks.rotationSpeed, globeMode]);
+
+  // Sync time offset
+  useEffect(() => {
+    window.timeOffsetHours = tweaks.timeOffset || 0;
+  }, [tweaks.timeOffset]);
+
+  // Sync marker pulse
+  useEffect(() => {
+    window.tweakPulse = tweaks.markerPulse;
+  }, [tweaks.markerPulse]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON') return;
+      if (e.key === 't' || e.key === 'T') setTerminalMode(m => !m);
+      if (e.key === 'f' || e.key === 'F') handleGlobeModeChange('free');
+      if (e.key === 'a' || e.key === 'A') handleGlobeModeChange('auto');
+      if (e.key === 's' || e.key === 'S') handleGlobeModeChange('follow');
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleGlobeModeChange]);
+
+  const toggleTerminal = useCallback(() => setTerminalMode(m => !m), []);
+
+  return (
+    <>
+      <ExchangeLabels hoveredId={hoveredExchange} onHover={setHoveredExchange} />
+
+      {terminalMode
+        ? <TerminalUI session={session} prices={prices} changes={changes} feed={feed} onToggleTerminal={toggleTerminal} />
+        : <CleanUI
+            session={session} prices={prices} changes={changes}
+            onToggleTerminal={toggleTerminal}
+            globeMode={globeMode} onGlobeModeChange={handleGlobeModeChange}
+            sunInfo={sunInfo} whaleEvents={whaleEvents}
+          />
+      }
+
+      <TweaksPanel title="Tweaks" tweaks={tweaks} setTweak={setTweak}>
+        <TweakSection title="Globe Navigation">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {Object.entries(MODE_META).map(([key, meta]) => (
+              <button key={key} onClick={() => handleGlobeModeChange(key)}
+                className={`twk-btn-nav${globeMode === key ? ' active' : ''}`}>
+                <span>{meta.icon} {meta.label}</span>
+                {globeMode === key && <span style={{ fontSize: '9px', opacity: 0.5 }}>active</span>}
+              </button>
+            ))}
+          </div>
+        </TweakSection>
+        <TweakSection title="Time Simulation">
+          <TweakSlider id="timeOffset" label="Offset (hours)" min={-12} max={12} step={0.5} unit="h" />
+        </TweakSection>
+        <TweakSection title="Globe">
+          <TweakSlider id="rotationSpeed" label="Auto Speed" min={0} max={100} step={1} />
+          <TweakToggle id="markerPulse" label="Exchange Pulse" />
+        </TweakSection>
+        <TweakSection title="Keys">
+          <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '11px', color: 'var(--fg-muted)' }}>
+            {[['T','terminal'],['A','auto rotate'],['F','free drag'],['S','follow sun'],['E','tweaks panel']].map(([k,v]) => (
+              <div key={k} className="twk-key-row"><span>{k}</span><span>{v}</span></div>
+            ))}
+          </div>
+        </TweakSection>
+      </TweaksPanel>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('ui-root')).render(<App />);
+</script>
+
+</body>
+</html>
