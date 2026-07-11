@@ -7,6 +7,7 @@ import type { GlobeMode, IpBlock } from "@ipmap/types";
 import { TweaksPanel } from "@/components/panels/TweaksPanel";
 import { LoadingBar } from "@/components/panels/LoadingBar";
 import { CountryPanel } from "@/components/panels/CountryPanel";
+import { BlockPanel } from "@/components/panels/BlockPanel";
 import { useIpData } from "@/hooks/useIpData";
 
 const GlobeScene = dynamic(
@@ -80,25 +81,10 @@ function IpMapApp() {
         />
       )}
       {selectedBlock && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 16,
-            left: 16,
-            zIndex: 50,
-            background: "rgba(0,0,0,0.75)",
-            border: "1px solid rgba(255,255,255,0.15)",
-            borderRadius: 8,
-            padding: "10px 14px",
-            color: "#fff",
-            fontFamily: "monospace",
-            fontSize: 12,
-          }}
-        >
-          <div style={{ color: "#60a5fa", marginBottom: 4 }}>Вибраний блок</div>
-          <div>Старт: {selectedBlock.start}</div>
-          <div>Розмір: {selectedBlock.size.toLocaleString()} адрес</div>
-        </div>
+        <BlockPanel
+          block={selectedBlock}
+          onClose={() => setSelectedBlock(null)}
+        />
       )}
       <TweaksPanel />
     </>
