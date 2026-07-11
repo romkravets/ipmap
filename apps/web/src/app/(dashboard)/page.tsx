@@ -21,6 +21,7 @@ function IpMapApp() {
   const { countries, blocksByCountry, isLoading } = useIpData();
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<IpBlock | null>(null);
+  const [hoveredBlock, setHoveredBlock] = useState<{ block: IpBlock; x: number; y: number } | null>(null);
 
   const countryData = selectedCountry
     ? countries.find((c) => c.cc === selectedCountry) ?? null
@@ -43,7 +44,10 @@ function IpMapApp() {
 
   const handleBlockClick = (block: IpBlock) => {
     setSelectedBlock(block);
-    console.log("[ipmap] block clicked:", block);
+  };
+
+  const handleBlockHover = (block: IpBlock | null, x: number, y: number) => {
+    setHoveredBlock(block ? { block, x, y } : null);
   };
 
   return (
@@ -58,6 +62,7 @@ function IpMapApp() {
         countryBlocks={countryBlocks}
         onCountryClick={setSelectedCountry}
         onBlockClick={handleBlockClick}
+        onBlockHover={handleBlockHover}
       />
       {isLoading && (
         <div
@@ -87,6 +92,29 @@ function IpMapApp() {
         />
       )}
       <TweaksPanel />
+      {hoveredBlock && (
+        <div
+          style={{
+            position: "fixed",
+            left: hoveredBlock.x + 14,
+            top: hoveredBlock.y + 14,
+            background: "rgba(0,0,0,0.78)",
+            color: "#e2e8f0",
+            fontSize: 12,
+            padding: "6px 10px",
+            borderRadius: 6,
+            pointerEvents: "none",
+            zIndex: 50,
+            whiteSpace: "nowrap",
+            border: "1px solid rgba(255,255,255,0.12)",
+          }}
+        >
+          <div style={{ fontFamily: "monospace" }}>{hoveredBlock.block.start}</div>
+          <div style={{ color: "#94a3b8" }}>
+            {hoveredBlock.block.size.toLocaleString()} addresses
+          </div>
+        </div>
+      )}
     </>
   );
 }

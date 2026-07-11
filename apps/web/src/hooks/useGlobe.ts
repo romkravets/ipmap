@@ -178,6 +178,7 @@ export interface UseGlobeOptions {
   countryBlocks?: IpBlock[];
   onCountryClick?: (cc: string) => void;
   onBlockClick?: (block: IpBlock) => void;
+  onBlockHover?: (block: IpBlock | null, x: number, y: number) => void;
 }
 
 export function useGlobe(
@@ -1225,6 +1226,33 @@ export function useGlobe(
       };
       canvas.addEventListener('click', onCanvasClick);
 
+      // ── Raycasting hover (blocks only) ────────────────────────────────────
+      const onCanvasMouseMove = (e: MouseEvent) => {
+        if (!blockPoints) {
+          optionsRef.current.onBlockHover?.(null, 0, 0);
+          return;
+        }
+        const rect = canvas.getBoundingClientRect();
+        const mouse = new THREE.Vector2(
+          ((e.clientX - rect.left) / rect.width) * 2 - 1,
+          -((e.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        raycaster.setFromCamera(mouse, camera);
+        raycaster.params.Points = { threshold: 0.015 };
+        const hits = raycaster.intersectObject(blockPoints);
+        if (hits.length > 0) {
+          const idx = hits[0].index ?? 0;
+          if (blockEntries[idx]) {
+            optionsRef.current.onBlockHover?.(blockEntries[idx], e.clientX, e.clientY);
+            canvas.style.cursor = 'pointer';
+            return;
+          }
+        }
+        optionsRef.current.onBlockHover?.(null, 0, 0);
+        canvas.style.cursor = '';
+      };
+      canvas.addEventListener('mousemove', onCanvasMouseMove);
+
       // ── Animation loop ────────────────────────────────────────────────────
       let elapsed = 0;
       const clock = new THREE.Clock();
@@ -1371,6 +1399,7 @@ export function useGlobe(
         mounted = false;
         cancelAnimationFrame(animId);
         canvas.removeEventListener('click', onCanvasClick);
+        canvas.removeEventListener('mousemove', onCanvasMouseMove);
         window.removeEventListener("resize", onResize);
         renderer.dispose();
         tradeMaterials.forEach((m) => m.dispose());
