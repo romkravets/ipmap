@@ -1274,13 +1274,12 @@ export function useGlobe(
         raycaster.setFromCamera(mouse, camera);
 
         // Рівень Країна: клік по блоку
-        if (blockPoints) {
-          raycaster.params.Points = { threshold: 0.015 };
-          const blockHits = raycaster.intersectObject(blockPoints);
+        if (blockMeshes.length) {
+          const blockHits = raycaster.intersectObjects(blockMeshes.map(m => m.dot));
           if (blockHits.length > 0) {
-            const idx = blockHits[0].index ?? 0;
-            if (blockEntries[idx]) {
-              optionsRef.current.onBlockClick?.(blockEntries[idx]);
+            const idx = blockMeshes.findIndex(m => m.dot === blockHits[0].object);
+            if (idx !== -1) {
+              optionsRef.current.onBlockClick?.(blockMeshes[idx].block);
             }
             return;
           }
@@ -1300,29 +1299,65 @@ export function useGlobe(
       };
       canvas.addEventListener('click', onCanvasClick);
 
-      // ── Raycasting hover (blocks only) ────────────────────────────────────
+      // ── Raycasting hover: блоки → дата-центри → IXP ─────────────────────────
       const onCanvasMouseMove = (e: MouseEvent) => {
-        if (!blockPoints) {
-          optionsRef.current.onBlockHover?.(null, 0, 0);
-          return;
-        }
         const rect = canvas.getBoundingClientRect();
         const mouse = new THREE.Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
           -((e.clientY - rect.top) / rect.height) * 2 + 1,
         );
         raycaster.setFromCamera(mouse, camera);
-        raycaster.params.Points = { threshold: 0.015 };
-        const hits = raycaster.intersectObject(blockPoints);
-        if (hits.length > 0) {
-          const idx = hits[0].index ?? 0;
-          if (blockEntries[idx]) {
-            optionsRef.current.onBlockHover?.(blockEntries[idx], e.clientX, e.clientY);
+
+        // Блоки (тільки рівень Країна)
+        if (blockMeshes.length) {
+          const hits = raycaster.intersectObjects(blockMeshes.map(m => m.dot));
+          if (hits.length > 0) {
+            const idx = blockMeshes.findIndex(m => m.dot === hits[0].object);
+            if (idx !== -1) {
+              if (hoveredBlockIdx !== idx) {
+                hoveredBlockIdx = idx;
+                updateBlockRings();
+              }
+              optionsRef.current.onBlockHover?.(blockMeshes[idx].block, e.clientX, e.clientY);
+              optionsRef.current.onInfraHover?.(null, 0, 0);
+              canvas.style.cursor = 'pointer';
+              return;
+            }
+          }
+        }
+        if (hoveredBlockIdx !== null) {
+          hoveredBlockIdx = null;
+          updateBlockRings();
+        }
+        optionsRef.current.onBlockHover?.(null, 0, 0);
+
+        // Дата-центри
+        if (dcGroup.children.length) {
+          const dcHits = raycaster.intersectObjects(dcGroup.children);
+          if (dcHits.length > 0) {
+            const dc = dcHits[0].object.userData.dc as DataCenter;
+            optionsRef.current.onInfraHover?.({ kind: 'datacenter', item: dc }, e.clientX, e.clientY);
             canvas.style.cursor = 'pointer';
             return;
           }
         }
-        optionsRef.current.onBlockHover?.(null, 0, 0);
+
+        // IXP
+        if (ixpPoints) {
+          raycaster.params.Points = { threshold: 0.015 };
+          const ixpHits = raycaster.intersectObject(ixpPoints);
+          if (ixpHits.length > 0) {
+            const idx = ixpHits[0].index ?? 0;
+            const ixp = optionsRef.current.ixps?.[idx];
+            if (ixp) {
+              optionsRef.current.onInfraHover?.({ kind: 'ixp', item: ixp }, e.clientX, e.clientY);
+              canvas.style.cursor = 'pointer';
+              return;
+            }
+          }
+        }
+
+        optionsRef.current.onInfraHover?.(null, 0, 0);
         canvas.style.cursor = '';
       };
       canvas.addEventListener('mousemove', onCanvasMouseMove);
@@ -1332,6 +1367,7 @@ export function useGlobe(
       const clock = new THREE.Clock();
       // Відстежуємо зміни масиву countries між рендерами
       const lastCountriesRef = { current: optionsRef.current.countries };
+      const lastSelectedBlockStartRef = { current: optionsRef.current.selectedBlock?.start ?? null };
       // Відстежуємо зміну вибраної країни
       const lastSelectedRef = { current: undefined as string | null | undefined };
       // Відстежуємо зміни інфраструктурних даних
@@ -1463,6 +1499,17 @@ export function useGlobe(
           } else {
             (m.ring.material as THREE.MeshBasicMaterial).opacity = 0;
           }
+        }
+
+        // Block-маркери: billboard + синхронізація кільця з selectedBlock ззовні
+        const curSelectedBlockStart = optionsRef.current.selectedBlock?.start ?? null;
+        if (curSelectedBlockStart !== lastSelectedBlockStartRef.current) {
+          lastSelectedBlockStartRef.current = curSelectedBlockStart;
+          updateBlockRings();
+        }
+        for (const m of blockMeshes) {
+          m.dot.quaternion.copy(camera.quaternion);
+          m.ring.quaternion.copy(camera.quaternion);
         }
 
         renderer.render(scene, camera);
