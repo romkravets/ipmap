@@ -118,7 +118,7 @@ export function TweaksPanel() {
   if (!open) {
     return (
       <>
-        <style>{CSS}</style>
+        <style dangerouslySetInnerHTML={{ __html: CSS }} />
         <button className="twk-handle" onClick={() => setOpen(true)} title="Відкрити налаштування (E)">
           <span style={{ fontSize: '13px' }}>⚙</span>
           Tweaks
@@ -129,7 +129,7 @@ export function TweaksPanel() {
 
   return (
     <>
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div ref={panelRef} className="twk-panel" style={{ right: offsetRef.current.x, bottom: offsetRef.current.y }}>
         <div className="twk-hd" onMouseDown={startDrag}>
           <b>Tweaks</b>
