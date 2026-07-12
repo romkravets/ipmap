@@ -1181,29 +1181,17 @@ export function useGlobe(
 
       interface BlockMeshEntry {
         dot: THREE.Mesh;
-        ring: THREE.Mesh;
         block: IpBlock;
       }
       let blockMeshes: BlockMeshEntry[] = [];
-      let hoveredBlockIdx: number | null = null;
-
-      function updateBlockRings() {
-        const selected = optionsRef.current.selectedBlock;
-        blockMeshes.forEach((m, i) => {
-          m.ring.visible = i === hoveredBlockIdx || m.block.start === selected?.start;
-        });
-      }
 
       function clearBlockCluster() {
         for (const entry of blockMeshes) {
-          blockGroup.remove(entry.dot, entry.ring);
+          blockGroup.remove(entry.dot);
           entry.dot.geometry.dispose();
           (entry.dot.material as THREE.Material).dispose();
-          entry.ring.geometry.dispose();
-          (entry.ring.material as THREE.Material).dispose();
         }
         blockMeshes = [];
-        hoveredBlockIdx = null;
       }
 
       function buildBlockCluster(blocks: IpBlock[], centerLat: number, centerLng: number) {
@@ -1214,7 +1202,7 @@ export function useGlobe(
         const step = 0.6; // degrees between blocks
         const minSize = Math.min(...blocks.map(b => b.size));
         const maxSize = Math.max(...blocks.map(b => b.size));
-        const BLOCK_BOX_SIZE = 0.012; // однаковий розмір для всіх блоків, незалежно від їхньої кількості адрес
+        const BLOCK_BOX_SIZE = 0.005; // однаковий розмір для всіх блоків; менший за крок сітки, щоб між кубиками був видимий проміжок
 
         blocks.forEach((block, i) => {
           const row = Math.floor(i / cols) - Math.floor(cols / 2);
@@ -1232,24 +1220,9 @@ export function useGlobe(
           );
           dot.position.copy(pos);
 
-          const ring = new THREE.Mesh(
-            new THREE.RingGeometry(BLOCK_BOX_SIZE * 1.6, BLOCK_BOX_SIZE * 2.2, 24),
-            new THREE.MeshBasicMaterial({
-              color,
-              transparent: true,
-              opacity: 0.5,
-              side: THREE.DoubleSide,
-              depthWrite: false,
-            }),
-          );
-          ring.position.copy(pos);
-          ring.visible = false;
-
-          blockGroup.add(dot, ring);
-          blockMeshes.push({ dot, ring, block });
+          blockGroup.add(dot);
+          blockMeshes.push({ dot, block });
         });
-
-        updateBlockRings();
       }
 
       // ── Camera tween ──────────────────────────────────────────────────────────────
@@ -1315,20 +1288,12 @@ export function useGlobe(
           if (hits.length > 0) {
             const idx = blockMeshes.findIndex(m => m.dot === hits[0].object);
             if (idx !== -1) {
-              if (hoveredBlockIdx !== idx) {
-                hoveredBlockIdx = idx;
-                updateBlockRings();
-              }
               optionsRef.current.onBlockHover?.(blockMeshes[idx].block, e.clientX, e.clientY);
               optionsRef.current.onInfraHover?.(null, 0, 0);
               canvas.style.cursor = 'pointer';
               return;
             }
           }
-        }
-        if (hoveredBlockIdx !== null) {
-          hoveredBlockIdx = null;
-          updateBlockRings();
         }
         optionsRef.current.onBlockHover?.(null, 0, 0);
 
@@ -1368,7 +1333,6 @@ export function useGlobe(
       const clock = new THREE.Clock();
       // Відстежуємо зміни масиву countries між рендерами
       const lastCountriesRef = { current: optionsRef.current.countries };
-      const lastSelectedBlockStartRef = { current: optionsRef.current.selectedBlock?.start ?? null };
       // Відстежуємо зміну вибраної країни
       const lastSelectedRef = { current: undefined as string | null | undefined };
       // Відстежуємо зміни інфраструктурних даних
@@ -1502,15 +1466,9 @@ export function useGlobe(
           }
         }
 
-        // Block-маркери: billboard + синхронізація кільця з selectedBlock ззовні
-        const curSelectedBlockStart = optionsRef.current.selectedBlock?.start ?? null;
-        if (curSelectedBlockStart !== lastSelectedBlockStartRef.current) {
-          lastSelectedBlockStartRef.current = curSelectedBlockStart;
-          updateBlockRings();
-        }
+        // Block-маркери: billboard
         for (const m of blockMeshes) {
           m.dot.quaternion.copy(camera.quaternion);
-          m.ring.quaternion.copy(camera.quaternion);
         }
 
         renderer.render(scene, camera);
