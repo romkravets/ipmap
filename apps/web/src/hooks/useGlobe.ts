@@ -1226,8 +1226,8 @@ export function useGlobe(
           const color = new THREE.Color().setHSL(visual.hue, visual.saturation, visual.lightness);
 
           const dot = new THREE.Mesh(
-            new THREE.CircleGeometry(visual.radius, 16),
-            new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+            new THREE.BoxGeometry(visual.radius * 1.8, visual.radius * 1.8, visual.radius * 1.8),
+            new THREE.MeshBasicMaterial({ color }),
           );
           dot.position.copy(pos);
 
