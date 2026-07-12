@@ -1,8 +1,9 @@
 "use client";
 
 import { TWEAK_DEFAULTS } from "@/lib/constants";
+import { blockMarkerVisual } from "@/lib/markerScale";
 import { getSunLatLng } from "@/lib/sun";
-import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint } from "@ipmap/types";
+import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint, InfraHoverInfo } from "@ipmap/types";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
@@ -176,9 +177,11 @@ export interface UseGlobeOptions {
   selectedCountry?: string | null;
   countryData?: CountryAlloc | null;
   countryBlocks?: IpBlock[];
+  selectedBlock?: IpBlock | null;
   onCountryClick?: (cc: string) => void;
   onBlockClick?: (block: IpBlock) => void;
   onBlockHover?: (block: IpBlock | null, x: number, y: number) => void;
+  onInfraHover?: (info: InfraHoverInfo | null, x: number, y: number) => void;
   cables?: SubmarineCable[];
   dataCenters?: DataCenter[];
   ixps?: IxPoint[];
@@ -1175,51 +1178,77 @@ export function useGlobe(
       // ── Block cluster ─────────────────────────────────────────────────────────────
       const blockGroup = new THREE.Group();
       scene.add(blockGroup);
-      let blockPoints: THREE.Points | null = null;
-      let blockEntries: IpBlock[] = [];
+
+      interface BlockMeshEntry {
+        dot: THREE.Mesh;
+        ring: THREE.Mesh;
+        block: IpBlock;
+      }
+      let blockMeshes: BlockMeshEntry[] = [];
+      let hoveredBlockIdx: number | null = null;
+
+      function updateBlockRings() {
+        const selected = optionsRef.current.selectedBlock;
+        blockMeshes.forEach((m, i) => {
+          m.ring.visible = i === hoveredBlockIdx || m.block.start === selected?.start;
+        });
+      }
+
+      function clearBlockCluster() {
+        for (const entry of blockMeshes) {
+          blockGroup.remove(entry.dot, entry.ring);
+          entry.dot.geometry.dispose();
+          (entry.dot.material as THREE.Material).dispose();
+          entry.ring.geometry.dispose();
+          (entry.ring.material as THREE.Material).dispose();
+        }
+        blockMeshes = [];
+        hoveredBlockIdx = null;
+      }
 
       function buildBlockCluster(blocks: IpBlock[], centerLat: number, centerLng: number) {
-        if (blockPoints) {
-          blockGroup.remove(blockPoints);
-          blockPoints.geometry.dispose();
-          (blockPoints.material as THREE.Material).dispose();
-          blockPoints = null;
-        }
-        blockEntries = blocks;
+        clearBlockCluster();
         if (!blocks.length) return;
 
         const cols = Math.ceil(Math.sqrt(blocks.length));
         const step = 0.6; // degrees between blocks
-        const positions: number[] = [];
+        const minSize = Math.min(...blocks.map(b => b.size));
+        const maxSize = Math.max(...blocks.map(b => b.size));
 
-        blocks.forEach((_, i) => {
+        blocks.forEach((block, i) => {
           const row = Math.floor(i / cols) - Math.floor(cols / 2);
           const col = (i % cols) - Math.floor(cols / 2);
           const lat = centerLat + row * step;
           const lng = centerLng + col * step;
-          const v = latLngToVec3(lat, lng, 1.015);
-          positions.push(v.x, v.y, v.z);
+          const pos = latLngToVec3(lat, lng, 1.015);
+
+          const visual = blockMarkerVisual(block.size, minSize, maxSize);
+          const color = new THREE.Color().setHSL(visual.hue, visual.saturation, visual.lightness);
+
+          const dot = new THREE.Mesh(
+            new THREE.CircleGeometry(visual.radius, 16),
+            new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+          );
+          dot.position.copy(pos);
+
+          const ring = new THREE.Mesh(
+            new THREE.RingGeometry(visual.radius * 1.6, visual.radius * 2.2, 24),
+            new THREE.MeshBasicMaterial({
+              color,
+              transparent: true,
+              opacity: 0.5,
+              side: THREE.DoubleSide,
+              depthWrite: false,
+            }),
+          );
+          ring.position.copy(pos);
+          ring.visible = false;
+
+          blockGroup.add(dot, ring);
+          blockMeshes.push({ dot, ring, block });
         });
 
-        const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-        const mat = new THREE.PointsMaterial({
-          size: 0.012,
-          color: 0x60a5fa,
-          sizeAttenuation: true,
-        });
-        blockPoints = new THREE.Points(geo, mat);
-        blockGroup.add(blockPoints);
-      }
-
-      function clearBlockCluster() {
-        if (blockPoints) {
-          blockGroup.remove(blockPoints);
-          blockPoints.geometry.dispose();
-          (blockPoints.material as THREE.Material).dispose();
-          blockPoints = null;
-        }
-        blockEntries = [];
+        updateBlockRings();
       }
 
       // ── Camera tween ──────────────────────────────────────────────────────────────
@@ -1245,13 +1274,12 @@ export function useGlobe(
         raycaster.setFromCamera(mouse, camera);
 
         // Рівень Країна: клік по блоку
-        if (blockPoints) {
-          raycaster.params.Points = { threshold: 0.015 };
-          const blockHits = raycaster.intersectObject(blockPoints);
+        if (blockMeshes.length) {
+          const blockHits = raycaster.intersectObjects(blockMeshes.map(m => m.dot));
           if (blockHits.length > 0) {
-            const idx = blockHits[0].index ?? 0;
-            if (blockEntries[idx]) {
-              optionsRef.current.onBlockClick?.(blockEntries[idx]);
+            const idx = blockMeshes.findIndex(m => m.dot === blockHits[0].object);
+            if (idx !== -1) {
+              optionsRef.current.onBlockClick?.(blockMeshes[idx].block);
             }
             return;
           }
@@ -1271,29 +1299,65 @@ export function useGlobe(
       };
       canvas.addEventListener('click', onCanvasClick);
 
-      // ── Raycasting hover (blocks only) ────────────────────────────────────
+      // ── Raycasting hover: блоки → дата-центри → IXP ─────────────────────────
       const onCanvasMouseMove = (e: MouseEvent) => {
-        if (!blockPoints) {
-          optionsRef.current.onBlockHover?.(null, 0, 0);
-          return;
-        }
         const rect = canvas.getBoundingClientRect();
         const mouse = new THREE.Vector2(
           ((e.clientX - rect.left) / rect.width) * 2 - 1,
           -((e.clientY - rect.top) / rect.height) * 2 + 1,
         );
         raycaster.setFromCamera(mouse, camera);
-        raycaster.params.Points = { threshold: 0.015 };
-        const hits = raycaster.intersectObject(blockPoints);
-        if (hits.length > 0) {
-          const idx = hits[0].index ?? 0;
-          if (blockEntries[idx]) {
-            optionsRef.current.onBlockHover?.(blockEntries[idx], e.clientX, e.clientY);
+
+        // Блоки (тільки рівень Країна)
+        if (blockMeshes.length) {
+          const hits = raycaster.intersectObjects(blockMeshes.map(m => m.dot));
+          if (hits.length > 0) {
+            const idx = blockMeshes.findIndex(m => m.dot === hits[0].object);
+            if (idx !== -1) {
+              if (hoveredBlockIdx !== idx) {
+                hoveredBlockIdx = idx;
+                updateBlockRings();
+              }
+              optionsRef.current.onBlockHover?.(blockMeshes[idx].block, e.clientX, e.clientY);
+              optionsRef.current.onInfraHover?.(null, 0, 0);
+              canvas.style.cursor = 'pointer';
+              return;
+            }
+          }
+        }
+        if (hoveredBlockIdx !== null) {
+          hoveredBlockIdx = null;
+          updateBlockRings();
+        }
+        optionsRef.current.onBlockHover?.(null, 0, 0);
+
+        // Дата-центри
+        if (dcGroup.visible && dcGroup.children.length) {
+          const dcHits = raycaster.intersectObjects(dcGroup.children);
+          if (dcHits.length > 0) {
+            const dc = dcHits[0].object.userData.dc as DataCenter;
+            optionsRef.current.onInfraHover?.({ kind: 'datacenter', item: dc }, e.clientX, e.clientY);
             canvas.style.cursor = 'pointer';
             return;
           }
         }
-        optionsRef.current.onBlockHover?.(null, 0, 0);
+
+        // IXP
+        if (ixpGroup.visible && ixpPoints) {
+          raycaster.params.Points = { threshold: 0.015 };
+          const ixpHits = raycaster.intersectObject(ixpPoints);
+          if (ixpHits.length > 0) {
+            const idx = ixpHits[0].index ?? 0;
+            const ixp = optionsRef.current.ixps?.[idx];
+            if (ixp) {
+              optionsRef.current.onInfraHover?.({ kind: 'ixp', item: ixp }, e.clientX, e.clientY);
+              canvas.style.cursor = 'pointer';
+              return;
+            }
+          }
+        }
+
+        optionsRef.current.onInfraHover?.(null, 0, 0);
         canvas.style.cursor = '';
       };
       canvas.addEventListener('mousemove', onCanvasMouseMove);
@@ -1303,6 +1367,7 @@ export function useGlobe(
       const clock = new THREE.Clock();
       // Відстежуємо зміни масиву countries між рендерами
       const lastCountriesRef = { current: optionsRef.current.countries };
+      const lastSelectedBlockStartRef = { current: optionsRef.current.selectedBlock?.start ?? null };
       // Відстежуємо зміну вибраної країни
       const lastSelectedRef = { current: undefined as string | null | undefined };
       // Відстежуємо зміни інфраструктурних даних
@@ -1434,6 +1499,17 @@ export function useGlobe(
           } else {
             (m.ring.material as THREE.MeshBasicMaterial).opacity = 0;
           }
+        }
+
+        // Block-маркери: billboard + синхронізація кільця з selectedBlock ззовні
+        const curSelectedBlockStart = optionsRef.current.selectedBlock?.start ?? null;
+        if (curSelectedBlockStart !== lastSelectedBlockStartRef.current) {
+          lastSelectedBlockStartRef.current = curSelectedBlockStart;
+          updateBlockRings();
+        }
+        for (const m of blockMeshes) {
+          m.dot.quaternion.copy(camera.quaternion);
+          m.ring.quaternion.copy(camera.quaternion);
         }
 
         renderer.render(scene, camera);
