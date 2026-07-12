@@ -15,7 +15,6 @@ Crypto trading sessions visualised on a real-time 3D globe — live prices, whal
 | Styling      | Tailwind CSS                  |
 | 3D Globe     | Three.js (client-only)        |
 | State        | React Context + useReducer    |
-| WS Server    | Node.js + `ws` + Express      |
 | Shared Types | `packages/types` (TypeScript) |
 | Monorepo     | pnpm workspaces + Turborepo   |
 
@@ -37,52 +36,38 @@ pnpm install
 ### Environment variables
 
 ```bash
-# Web
 cp apps/web/.env.example apps/web/.env.local
-
-# Server
-cp apps/server/.env.example apps/server/.env
 ```
 
-Edit both `.env` files as needed. The only required key for offline dev is `NEXTAUTH_SECRET`.
+Edit as needed. The only required key for offline dev is `NEXTAUTH_SECRET`.
 
 ### Run (development)
 
 ```bash
-# Start both web and server together
-pnpm dev
+pnpm dev                          # http://localhost:3000
 
-
-
- Рішення — видалити кеш і перезапустити dev сервер:
-
-  rm -rf apps/web/.next
-  pnpm --filter @sessionmap/web dev
-
-  Або якщо запускаєте обидва сервіси разом:
-
-  rm -rf apps/web/.next
-  pnpm dev
-
-
-# Or individually
-pnpm --filter @sessionmap/web dev      # http://localhost:3000
-pnpm --filter @sessionmap/server dev   # ws://localhost:4000
+# Якщо Next кешує старе після великих змін:
+rm -rf apps/web/.next && pnpm dev
 ```
 
-The web app shows simulated data (fallback prices + local whale arc spawner) even if the server is unreachable. The `STALE` badge appears in the top bar when the WebSocket is disconnected.
+### Generate data
+
+```bash
+node scripts/build-ipv4-data.mjs      # ipv4-by-country.json, centroids.json
+node scripts/build-infra-data.mjs     # datacenters.json, ixps.json, submarine-cables.json
+```
 
 ---
 
 ## Project structure
 
 ```
-sessionmap/
+ipmap/
 ├── apps/
-│   ├── web/          ← Next.js 14 (port 3000)
-│   └── server/       ← Express + ws (port 4000)
+│   └── web/          ← Next.js 14 (port 3000)
 ├── packages/
 │   └── types/        ← Shared TypeScript types
+├── scripts/           ← ETL: RIR delegated stats → JSON datasets
 ├── turbo.json
 └── pnpm-workspace.yaml
 ```
@@ -112,18 +97,7 @@ sessionmap/
 | -------------------- | ----------------------- | ---------------------------- |
 | `NEXTAUTH_URL`       | `http://localhost:3000` | NextAuth base URL            |
 | `NEXTAUTH_SECRET`    | —                       | Required (32+ random chars)  |
-| `NEXT_PUBLIC_WS_URL` | `ws://localhost:4000`   | WS server address            |
 | `MONGODB_URI`        | —                       | Optional (NextAuth sessions) |
-
-### `apps/server/.env`
-
-| Variable            | Default                 | Description                |
-| ------------------- | ----------------------- | -------------------------- |
-| `PORT`              | `4000`                  | Server port                |
-| `CLIENT_ORIGIN`     | `http://localhost:3000` | CORS + WS origin whitelist |
-| `BINANCE_WS_URL`    | Binance `!ticker@arr`   | Override for testing       |
-| `COINGECKO_API_URL` | CoinGecko v3            | Override for testing       |
-| `MONGODB_URI`       | —                       | Optional (user settings)   |
 
 ---
 
@@ -133,4 +107,4 @@ sessionmap/
 pnpm build
 ```
 
-Web → Vercel, Server → Railway (see `apps/server/Dockerfile`).
+Деплой — Render (`render.yaml`), білд генерує датасети з ETL-скриптів перед `next build`.
