@@ -6,7 +6,8 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
-    "build-data": "node scripts/build-ipv4-data.mjs"
+    "build-data": "node scripts/build-ipv4-data.mjs",
+    "build-infra-data": "node scripts/build-infra-data.mjs"
   },
   "devDependencies": {
     "eslint": "^9",
