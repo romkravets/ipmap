@@ -1,28 +1,12 @@
 services:
-  # ── Next.js frontend ────────────────────────────────────────────────────────
+  # ── Next.js frontend — єдиний сервіс, читає статичні JSON-датасети з public/data ──
   - type: web
-    name: sessionmap-web
+    name: ipmap-web
     runtime: node
     region: frankfurt
     plan: starter
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @sessionmap/types build && NODE_OPTIONS=--max-old-space-size=450 pnpm --filter @sessionmap/web build
-    startCommand: pnpm --filter @sessionmap/web start
+    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @ipmap/types build && node scripts/build-ipv4-data.mjs && node scripts/build-infra-data.mjs && NODE_OPTIONS=--max-old-space-size=450 pnpm --filter @ipmap/web build
+    startCommand: pnpm --filter @ipmap/web start
     envVars:
       - key: NODE_ENV
         value: production
-      - key: NEXT_PUBLIC_WS_URL
-        value: wss://sessionmap-server.onrender.com
-
-  # ── Express / WebSocket backend ─────────────────────────────────────────────
-  - type: web
-    name: sessionmap-server
-    runtime: node
-    region: frankfurt
-    plan: free
-    buildCommand: pnpm install --frozen-lockfile && pnpm --filter @sessionmap/types build && pnpm --filter @sessionmap/server build
-    startCommand: node apps/server/dist/index.js
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: CLIENT_ORIGIN
-        value: https://sessionmap-web.onrender.com
