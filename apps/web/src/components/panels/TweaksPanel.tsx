@@ -20,6 +20,16 @@ const CSS = `
 .twk-x{appearance:none;border:0;background:transparent;color:rgba(232,236,244,.4);
   width:22px;height:22px;border-radius:6px;cursor:pointer;font-size:13px;line-height:22px}
 .twk-x:hover{background:rgba(255,255,255,.06);color:#E8ECF4}
+.twk-handle{position:fixed;right:16px;bottom:16px;z-index:2147483646;
+  height:26px;border-radius:6px;background:none;
+  border:1px solid rgba(255,255,255,.08);cursor:pointer;
+  color:rgba(255,255,255,.55);font-size:11px;
+  font-family:var(--font-mono,monospace);letter-spacing:.08em;
+  display:flex;align-items:center;gap:6px;padding:0 10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.4);
+  transition:background .2s,border-color .2s,color .2s}
+.twk-handle:hover{background:rgba(125,211,252,.12);
+  border-color:rgba(125,211,252,.35);color:#7DD3FC}
 .twk-body{padding:8px 14px 14px;display:flex;flex-direction:column;gap:10px;
   overflow-y:auto;overflow-x:hidden;min-height:0;
   scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.1) transparent}
@@ -103,9 +113,19 @@ export function TweaksPanel() {
     dispatch({ type: 'SET_TWEAK', payload: { [key]: val } })
   }
 
-  if (!open) return null
-
   const MODES: GlobeMode[] = ['auto', 'free', 'follow']
+
+  if (!open) {
+    return (
+      <>
+        <style>{CSS}</style>
+        <button className="twk-handle" onClick={() => setOpen(true)} title="Відкрити налаштування (E)">
+          <span style={{ fontSize: '13px' }}>⚙</span>
+          Tweaks
+        </button>
+      </>
+    )
+  }
 
   return (
     <>
