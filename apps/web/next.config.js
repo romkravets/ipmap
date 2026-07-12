@@ -12,8 +12,8 @@ const ContentSecurityPolicy = [
   scriptSrc,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
-  // WebSocket до свого сервера + текстури з CDN + raw GitHub для GeoJSON/textures
-  "connect-src 'self' ws://localhost:4000 wss://localhost:4000 wss://*.sessionmap.app wss://*.onrender.com https://*.onrender.com https://unpkg.com https://cdn.jsdelivr.net https://raw.githubusercontent.com https://api.github.com",
+  // RDAP (bootstrap + 5 RIR) для BlockPanel + текстури з CDN + raw GitHub для GeoJSON/textures
+  "connect-src 'self' https://rdap.org https://rdap.db.ripe.net https://rdap.arin.net https://rdap.apnic.net https://rdap.lacnic.net https://rdap.afrinic.net https://unpkg.com https://cdn.jsdelivr.net https://raw.githubusercontent.com https://api.github.com",
   "img-src 'self' data: blob: https://unpkg.com https://cdn.jsdelivr.net https://raw.githubusercontent.com",
   "worker-src blob:",
   "object-src 'none'",
