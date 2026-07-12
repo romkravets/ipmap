@@ -63,3 +63,7 @@ export interface IxPoint {
   country: string;
   netCount: number;
 }
+
+export type InfraHoverInfo =
+  | { kind: 'datacenter'; item: DataCenter }
+  | { kind: 'ixp'; item: IxPoint }
