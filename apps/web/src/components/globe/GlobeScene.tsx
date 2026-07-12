@@ -2,7 +2,7 @@
 
 import { useRef, memo } from 'react'
 import { useGlobe } from '@/hooks/useGlobe'
-import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint } from '@ipmap/types'
+import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint, InfraHoverInfo } from '@ipmap/types'
 
 interface GlobeSceneProps {
   mode: GlobeMode
@@ -11,10 +11,11 @@ interface GlobeSceneProps {
   selectedCountry?: string | null
   countryData?: CountryAlloc | null
   countryBlocks?: IpBlock[]
+  selectedBlock?: IpBlock | null
   onCountryClick?: (cc: string) => void
   onBlockClick?: (block: IpBlock) => void
   onBlockHover?: (block: IpBlock | null, x: number, y: number) => void
-  onCanvasPointerDown?: () => void
+  onInfraHover?: (info: InfraHoverInfo | null, x: number, y: number) => void
   cables?: SubmarineCable[]
   dataCenters?: DataCenter[]
   ixps?: IxPoint[]
@@ -27,21 +28,21 @@ export const GlobeScene = memo(function GlobeScene({
   selectedCountry,
   countryData,
   countryBlocks,
+  selectedBlock,
   onCountryClick,
   onBlockClick,
   onBlockHover,
-  onCanvasPointerDown,
+  onInfraHover,
   cables,
   dataCenters,
   ixps,
 }: GlobeSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  useGlobe(canvasRef, { mode, tweaks, countries, selectedCountry, countryData, countryBlocks, onCountryClick, onBlockClick, onBlockHover, cables, dataCenters, ixps })
+  useGlobe(canvasRef, { mode, tweaks, countries, selectedCountry, countryData, countryBlocks, selectedBlock, onCountryClick, onBlockClick, onBlockHover, onInfraHover, cables, dataCenters, ixps })
 
   return (
     <canvas
       ref={canvasRef}
-      onPointerDown={onCanvasPointerDown}
       style={{
         position: 'fixed',
         inset: 0,
