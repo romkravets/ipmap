@@ -1332,7 +1332,7 @@ export function useGlobe(
         optionsRef.current.onBlockHover?.(null, 0, 0);
 
         // Дата-центри
-        if (dcGroup.children.length) {
+        if (dcGroup.visible && dcGroup.children.length) {
           const dcHits = raycaster.intersectObjects(dcGroup.children);
           if (dcHits.length > 0) {
             const dc = dcHits[0].object.userData.dc as DataCenter;
@@ -1343,7 +1343,7 @@ export function useGlobe(
         }
 
         // IXP
-        if (ixpPoints) {
+        if (ixpGroup.visible && ixpPoints) {
           raycaster.params.Points = { threshold: 0.015 };
           const ixpHits = raycaster.intersectObject(ixpPoints);
           if (ixpHits.length > 0) {
