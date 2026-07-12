@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { IpBlock } from '@ipmap/types'
 import { fetchRdap, type RdapInfo } from '@/lib/rdap'
+import { useClickOutside } from '@/hooks/useClickOutside'
 
 interface BlockPanelProps {
   block: IpBlock
@@ -24,6 +25,9 @@ function formatSize(size: number): string {
 export function BlockPanel({ block, onClose }: BlockPanelProps) {
   const [info, setInfo] = useState<RdapInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useClickOutside(panelRef, onClose)
 
   useEffect(() => {
     setLoading(true)
@@ -36,6 +40,7 @@ export function BlockPanel({ block, onClose }: BlockPanelProps) {
 
   return (
     <div
+      ref={panelRef}
       style={{
         position: 'fixed',
         bottom: 16,
