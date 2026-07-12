@@ -1214,6 +1214,7 @@ export function useGlobe(
         const step = 0.6; // degrees between blocks
         const minSize = Math.min(...blocks.map(b => b.size));
         const maxSize = Math.max(...blocks.map(b => b.size));
+        const BLOCK_BOX_SIZE = 0.012; // однаковий розмір для всіх блоків, незалежно від їхньої кількості адрес
 
         blocks.forEach((block, i) => {
           const row = Math.floor(i / cols) - Math.floor(cols / 2);
@@ -1226,13 +1227,13 @@ export function useGlobe(
           const color = new THREE.Color().setHSL(visual.hue, visual.saturation, visual.lightness);
 
           const dot = new THREE.Mesh(
-            new THREE.BoxGeometry(visual.radius * 1.8, visual.radius * 1.8, visual.radius * 1.8),
+            new THREE.BoxGeometry(BLOCK_BOX_SIZE, BLOCK_BOX_SIZE, BLOCK_BOX_SIZE),
             new THREE.MeshBasicMaterial({ color }),
           );
           dot.position.copy(pos);
 
           const ring = new THREE.Mesh(
-            new THREE.RingGeometry(visual.radius * 1.6, visual.radius * 2.2, 24),
+            new THREE.RingGeometry(BLOCK_BOX_SIZE * 1.6, BLOCK_BOX_SIZE * 2.2, 24),
             new THREE.MeshBasicMaterial({
               color,
               transparent: true,
