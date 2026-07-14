@@ -17,6 +17,9 @@ out/
 # ── Monorepo / Turborepo ──────────────────────────────────────────────────────
 .turbo/
 
+# ── Git worktrees (тимчасові, для ізольованої розробки) ───────────────────────
+.worktrees/
+
 # ── Environment files ─────────────────────────────────────────────────────────
 # .env.example files are committed on purpose — they document required variables
 .env
