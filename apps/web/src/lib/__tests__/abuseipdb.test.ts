@@ -85,6 +85,17 @@ describe('getCachedAbuse / fetchAbuse', () => {
     expect(getCachedAbuse('1.2.3.4')).toBeNull()
   })
 
+  it('getCachedAbuse повертає null, а не кидає виняток, якщо localStorage.getItem недоступний (наприклад, sandboxed iframe)', () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked')
+    })
+
+    expect(() => getCachedAbuse('14.15.16.17')).not.toThrow()
+    expect(getCachedAbuse('14.15.16.17')).toBeNull()
+
+    getItemSpy.mockRestore()
+  })
+
   it('fetchAbuse не робить мережевий запит, якщо є валідний кеш у localStorage', async () => {
     localStorage.setItem(
       'abuseipdb:1.2.3.4',

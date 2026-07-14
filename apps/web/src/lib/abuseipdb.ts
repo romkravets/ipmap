@@ -62,9 +62,9 @@ function cacheKey(ip: string): string {
 }
 
 function readLocalStorage(ip: string): AbuseInfo | null {
-  const raw = localStorage.getItem(cacheKey(ip))
-  if (!raw) return null
   try {
+    const raw = localStorage.getItem(cacheKey(ip))
+    if (!raw) return null
     const entry = JSON.parse(raw) as CacheEntry
     if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) return null
     return entry.data
