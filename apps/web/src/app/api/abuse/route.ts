@@ -4,7 +4,7 @@ import { extractAbuseInfo, isValidIpv4 } from '@/lib/abuseipdb'
 export async function GET(request: NextRequest) {
   const ip = request.nextUrl.searchParams.get('ip')
   if (!ip || !isValidIpv4(ip)) {
-    return NextResponse.json({ error: 'invalid ip' }, { status: 400 })
+    return NextResponse.json({ error: 'невалідний ip' }, { status: 400 })
   }
 
   const apiKey = process.env.ABUSEIPDB_API_KEY
@@ -18,11 +18,11 @@ export async function GET(request: NextRequest) {
       { headers: { Key: apiKey, Accept: 'application/json' } },
     )
     if (!upstream.ok) {
-      return NextResponse.json({ error: 'upstream error' }, { status: 502 })
+      return NextResponse.json({ error: 'помилка апстріму' }, { status: 502 })
     }
     const raw = await upstream.json()
     return NextResponse.json(extractAbuseInfo(raw))
   } catch {
-    return NextResponse.json({ error: 'upstream error' }, { status: 502 })
+    return NextResponse.json({ error: 'помилка апстріму' }, { status: 502 })
   }
 }
