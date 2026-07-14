@@ -9,6 +9,7 @@ import { LoadingBar } from "@/components/panels/LoadingBar";
 import { CountryPanel } from "@/components/panels/CountryPanel";
 import { BlockPanel } from "@/components/panels/BlockPanel";
 import { getProviderLabel } from "@/lib/infraLabels";
+import { getCachedAbuse, getAbuseColor } from "@/lib/abuseipdb";
 const LayerTogglePanel = dynamic(
   () => import("@/components/panels/LayerTogglePanel").then((m) => m.LayerTogglePanel),
   { ssr: false },
@@ -119,29 +120,44 @@ function IpMapApp() {
       )}
       <TweaksPanel />
       <LayerTogglePanel />
-      {hoveredBlock && (
-        <div
-          style={{
-            position: "fixed",
-            left: hoveredBlock.x + 14,
-            top: hoveredBlock.y + 14,
-            background: "rgba(0,0,0,0.78)",
-            color: "#e2e8f0",
-            fontSize: 12,
-            padding: "6px 10px",
-            borderRadius: 6,
-            pointerEvents: "none",
-            zIndex: 50,
-            whiteSpace: "nowrap",
-            border: "1px solid rgba(255,255,255,0.12)",
-          }}
-        >
-          <div style={{ fontFamily: "monospace" }}>{hoveredBlock.block.start}</div>
-          <div style={{ color: "#94a3b8" }}>
-            {hoveredBlock.block.size.toLocaleString()} addresses
-          </div>
-        </div>
-      )}
+      {hoveredBlock && (() => {
+  const abuse = getCachedAbuse(hoveredBlock.block.start);
+  return (
+    <div
+      style={{
+        position: "fixed",
+        left: hoveredBlock.x + 14,
+        top: hoveredBlock.y + 14,
+        background: "rgba(0,0,0,0.78)",
+        color: "#e2e8f0",
+        fontSize: 12,
+        padding: "6px 10px",
+        borderRadius: 6,
+        pointerEvents: "none",
+        zIndex: 50,
+        whiteSpace: "nowrap",
+        border: "1px solid rgba(255,255,255,0.12)",
+      }}
+    >
+      <div style={{ fontFamily: "monospace" }}>{hoveredBlock.block.start}</div>
+      <div style={{ color: "#94a3b8", display: "flex", alignItems: "center", gap: 6 }}>
+        {hoveredBlock.block.size.toLocaleString()} addresses
+        {abuse && (
+          <span
+            title={`Abuse score: ${abuse.score}%`}
+            style={{
+              display: "inline-block",
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: getAbuseColor(abuse.score),
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+})()}
       {hoveredInfra && (
         <div
           style={{
