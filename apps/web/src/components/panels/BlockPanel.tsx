@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { IpBlock } from '@ipmap/types'
 import { fetchRdap, type RdapInfo } from '@/lib/rdap'
+import { fetchAbuse, getAbuseColor, type AbuseInfo } from '@/lib/abuseipdb'
 import { useClickOutside } from '@/hooks/useClickOutside'
 
 interface BlockPanelProps {
@@ -25,6 +26,8 @@ function formatSize(size: number): string {
 export function BlockPanel({ block, onClose }: BlockPanelProps) {
   const [info, setInfo] = useState<RdapInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  const [abuseInfo, setAbuseInfo] = useState<AbuseInfo | null>(null)
+  const [abuseLoading, setAbuseLoading] = useState(true)
   const panelRef = useRef<HTMLDivElement>(null)
 
   useClickOutside(panelRef, onClose)
@@ -35,6 +38,15 @@ export function BlockPanel({ block, onClose }: BlockPanelProps) {
     fetchRdap(block.start).then(data => {
       setInfo(data)
       setLoading(false)
+    })
+  }, [block.start])
+
+  useEffect(() => {
+    setAbuseLoading(true)
+    setAbuseInfo(null)
+    fetchAbuse(block.start).then(data => {
+      setAbuseInfo(data)
+      setAbuseLoading(false)
     })
   }, [block.start])
 
@@ -105,6 +117,39 @@ export function BlockPanel({ block, onClose }: BlockPanelProps) {
           <div>
             <span style={{ color: '#64748b' }}>Діапазон: </span>
             <span style={{ fontSize: 11 }}>{info.startAddress} – {info.endAddress}</span>
+          </div>
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            {abuseLoading && <div style={{ color: '#64748b', fontSize: 12 }}>Завантаження AbuseIPDB...</div>}
+            {!abuseLoading && !abuseInfo && (
+              <div style={{ color: '#64748b', fontSize: 12 }}>Abuse-дані недоступні</div>
+            )}
+            {!abuseLoading && abuseInfo && (
+              <>
+                <div>
+                  <span style={{ color: '#64748b' }}>Abuse score: </span>
+                  <span style={{ color: getAbuseColor(abuseInfo.score), fontWeight: 700 }}>
+                    {abuseInfo.score}%
+                  </span>
+                  <span style={{ color: '#64748b' }}> ({abuseInfo.totalReports} звітів)</span>
+                </div>
+                {abuseInfo.isp && (
+                  <div>
+                    <span style={{ color: '#64748b' }}>ISP: </span>
+                    <span>{abuseInfo.isp}</span>
+                  </div>
+                )}
+                <div>
+                  <span style={{ color: '#64748b' }}>Tor: </span>
+                  <span>{abuseInfo.isTor ? 'так' : 'ні'}</span>
+                </div>
+                {abuseInfo.lastReportedAt && (
+                  <div>
+                    <span style={{ color: '#64748b' }}>Останній звіт: </span>
+                    <span>{abuseInfo.lastReportedAt.slice(0, 10)}</span>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}
