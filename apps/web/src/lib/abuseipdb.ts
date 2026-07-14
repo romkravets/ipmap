@@ -94,7 +94,11 @@ export async function fetchAbuse(ip: string): Promise<AbuseInfo | null> {
     if (!res.ok) return null
     const data = (await res.json()) as AbuseInfo
     memoryCache.set(ip, data)
-    writeLocalStorage(ip, data)
+    try {
+      writeLocalStorage(ip, data)
+    } catch {
+      // кеш не критичний — повертаємо дані навіть якщо запис у localStorage не вдався
+    }
     return data
   } catch {
     return null

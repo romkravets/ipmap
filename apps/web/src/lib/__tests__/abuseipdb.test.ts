@@ -121,4 +121,21 @@ describe('getCachedAbuse / fetchAbuse', () => {
     const result = await fetchAbuse('9.9.9.9')
     expect(result).toBeNull()
   })
+
+  it('fetchAbuse повертає fetched дані, навіть якщо запис у localStorage падає (наприклад, Safari private mode)', async () => {
+    const freshInfo = { ...sampleInfo, score: 55 }
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve(freshInfo),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded')
+    })
+
+    const result = await fetchAbuse('10.11.12.13')
+    expect(result).toEqual(freshInfo)
+
+    setItemSpy.mockRestore()
+  })
 })
