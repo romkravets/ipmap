@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
+    "vercel-build": "cd ../.. && pnpm --filter @ipmap/types build && node scripts/build-ipv4-data.mjs && node scripts/build-infra-data.mjs && NODE_OPTIONS=--max-old-space-size=450 pnpm --filter @ipmap/web build",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"

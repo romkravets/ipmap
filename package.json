@@ -6,6 +6,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "type-check": "turbo run type-check",
+    "vercel-build": "pnpm --filter @ipmap/types build && node scripts/build-ipv4-data.mjs && node scripts/build-infra-data.mjs && NODE_OPTIONS=--max-old-space-size=450 pnpm --filter @ipmap/web build",
     "build-data": "node scripts/build-ipv4-data.mjs",
     "build-infra-data": "node scripts/build-infra-data.mjs"
   },

@@ -1,4 +1,4 @@
 {
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "ROOT=.\nif [ ! -f scripts/build-ipv4-data.mjs ]; then\n  if [ -f ../scripts/build-ipv4-data.mjs ]; then\n    ROOT=..\n  else\n    ROOT=../..\n  fi\nfi\ncd \"$ROOT\" && pnpm --filter @ipmap/types build && node scripts/build-ipv4-data.mjs && node scripts/build-infra-data.mjs && NODE_OPTIONS=--max-old-space-size=450 pnpm --filter @ipmap/web build"
+  "buildCommand": "pnpm vercel-build"
 }
