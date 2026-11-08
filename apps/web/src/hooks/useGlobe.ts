@@ -2,6 +2,7 @@
 
 import { TWEAK_DEFAULTS } from "@/lib/constants";
 import { latLngToVec3, greatCircleArc } from "@/lib/geo3d";
+import { createLayerRegistry } from "@/lib/layers/registry";
 import { blockMarkerVisual } from "@/lib/markerScale";
 import { getSunLatLng } from "@/lib/sun";
 import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint, InfraHoverInfo } from "@ipmap/types";
@@ -191,6 +192,8 @@ export function useGlobe(
       renderer.toneMappingExposure = 1.15;
 
       const scene = new THREE.Scene();
+      // Реєстр модульних шарів (спочатку порожній)
+      const registry = createLayerRegistry();
       const camera = new THREE.PerspectiveCamera(
         42,
         window.innerWidth / window.innerHeight,
@@ -1063,6 +1066,7 @@ export function useGlobe(
         borders:     bordersProxy,
         datacenters: dcGroup,
         ixps:        ixpGroup,
+        ...registry.groups(),
       };
 
       // Apply initial layer defaults immediately after Three.js groups are registered
@@ -1071,6 +1075,10 @@ export function useGlobe(
       if (initLayers?.cables !== undefined) cableGroup.visible = initLayers.cables;
       if (initLayers?.datacenters !== undefined) dcGroup.visible = initLayers.datacenters;
       if (initLayers?.ixps !== undefined) ixpGroup.visible = initLayers.ixps;
+      // Початкова видимість шарів реєстру
+      Object.entries(registry.groups()).forEach(([key, group]) => {
+        if (initLayers?.[key] !== undefined) group.visible = initLayers[key];
+      });
 
       window.globeState = {
         mode: optionsRef.current.mode,
@@ -1297,6 +1305,14 @@ export function useGlobe(
           }
         }
 
+        // Шари реєстру
+        const hit = registry.pick(raycaster);
+        if (hit) {
+          optionsRef.current.onInfraHover?.(hit, e.clientX, e.clientY);
+          canvas.style.cursor = 'pointer';
+          return;
+        }
+
         optionsRef.current.onInfraHover?.(null, 0, 0);
         canvas.style.cursor = '';
       };
@@ -1382,6 +1398,7 @@ export function useGlobe(
 
         window.globeCamDist = camera.position.length();
         controls.update();
+        registry.update(dt, new Date(Date.now() + (tweaks.timeOffset ?? 0) * 3_600_000));
 
         // Відстеження зміни selectedCountry
         const newSelected = optionsRef.current.selectedCountry;
@@ -1469,6 +1486,7 @@ export function useGlobe(
         canvas.removeEventListener('click', onCanvasClick);
         canvas.removeEventListener('mousemove', onCanvasMouseMove);
         window.removeEventListener("resize", onResize);
+        registry.dispose(scene);
         renderer.dispose();
         tradeMaterials.forEach((m) => m.dispose());
         cableMaterials.forEach((m) => m.dispose());
