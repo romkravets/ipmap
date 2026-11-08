@@ -178,6 +178,8 @@ export function useGlobe(
 
     let animId: number;
     let mounted = true;
+    // Прибирання, що створюється всередині async IIFE (реєстр шарів, воркер, рендерер)
+    let teardown: (() => void) | undefined;
 
     (async () => {
       const OrbitControls = await loadOrbitControls();
@@ -1502,7 +1504,7 @@ export function useGlobe(
       window.addEventListener("resize", onResize);
 
       // ── Cleanup ───────────────────────────────────────────────────────────
-      return () => {
+      teardown = () => {
         mounted = false;
         cancelAnimationFrame(animId);
         canvas.removeEventListener('click', onCanvasClick);
@@ -1522,6 +1524,10 @@ export function useGlobe(
     return () => {
       mounted = false;
       cancelAnimationFrame(animId);
+      // Викликаємо один раз; якщо IIFE завершився раніше (!mounted), teardown не заданий
+      const t = teardown;
+      teardown = undefined;
+      t?.();
     };
   }, [canvasRef]);
 }
