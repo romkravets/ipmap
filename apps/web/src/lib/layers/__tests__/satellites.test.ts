@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import * as THREE from 'three';
 import type { SatOmm } from '@ipmap/types';
-import { SatellitesLayer } from '../satellites';
+import { SatellitesLayer, ISS_NORAD_ID } from '../satellites';
+import { orbitTrack } from '../../satellites/propagator';
 import { latLngToVec3 } from '../../geo3d';
 import { compressOmm } from '../../satellites/omm';
 import issRaw from '../../satellites/__fixtures__/iss-omm.json';
@@ -17,6 +18,11 @@ function makeFake() {
   return { port, sent };
 }
 
+vi.mock('../../satellites/propagator', async (orig) => {
+  const actual = await orig<typeof import('../../satellites/propagator')>();
+  return { ...actual, orbitTrack: vi.fn(actual.orbitTrack) };
+});
+
 const iss: SatOmm[] = compressOmm(issRaw);
 const now = new Date('2026-11-08T05:00:00Z');
 
@@ -29,7 +35,7 @@ function setup() {
     f.port.onmessage!({
       data: { type: 'positions', group: 'stations', gen, ms: 0, positions: new Float32Array(arr) },
     });
-  const pts = () => layer.group.children[0] as THREE.Points;
+  const pts = () => layer.group.children.find((c) => c.userData.group === 'stations') as THREE.Points;
   const pos = () => Array.from((pts().geometry.getAttribute('position') as THREE.BufferAttribute).array);
   return { ...f, layer, loadMsg, respond, pts, pos };
 }
@@ -39,7 +45,7 @@ describe('SatellitesLayer', () => {
     const { sent, layer, loadMsg } = setup();
     expect(loadMsg).toMatchObject({ type: 'load', group: 'stations', omms: iss });
     expect(typeof loadMsg.gen).toBe('number');
-    expect(layer.group.children).toHaveLength(1);
+    expect(layer.group.children.filter((c) => c.userData.group)).toHaveLength(1);
     expect(layer.group.children[0]).toBeInstanceOf(THREE.Points);
     expect(sent).toHaveLength(1);
   });
@@ -137,5 +143,79 @@ describe('SatellitesLayer', () => {
     layer.dispose();
     expect(() => layer.dispose()).not.toThrow();
     expect(port.terminate).toHaveBeenCalledTimes(1);
+  });
+
+  describe('МКС', () => {
+    const orbit = (l: SatellitesLayer) => l.group.getObjectByName('iss-orbit') as THREE.Line;
+    const marker = (l: SatellitesLayer) => l.group.getObjectByName('iss-marker') as THREE.Points;
+    const orbitPos = (l: SatellitesLayer) =>
+      Array.from((orbit(l).geometry.getAttribute('position') as THREE.BufferAttribute).array);
+
+    it('iss-orbit — Line з 90 вершинами, iss-marker існує', () => {
+      const { layer } = setup();
+      expect(ISS_NORAD_ID).toBe(25544);
+      expect(orbit(layer)).toBeInstanceOf(THREE.Line);
+      expect(orbit(layer).geometry.getAttribute('position').count).toBe(90);
+      expect(marker(layer)).toBeInstanceOf(THREE.Points);
+      expect(marker(layer).geometry.getAttribute('position').count).toBe(1);
+    });
+
+    it('після update орбіта скінченна, а маркер збігається з вершиною МКС', () => {
+      const { layer, respond, pos } = setup();
+      respond([10, 20, 400]);
+      layer.update(1, now);
+      const m = Array.from((marker(layer).geometry.getAttribute('position') as THREE.BufferAttribute).array);
+      const idx = iss.findIndex((o) => o.NORAD_CAT_ID === ISS_NORAD_ID);
+      expect(m).toEqual(pos().slice(idx * 3, idx * 3 + 3));
+      expect(m).not.toEqual([0, 0, 0]);
+      expect(orbitPos(layer).every(Number.isFinite)).toBe(true);
+      expect(orbit(layer).visible).toBe(true);
+    });
+
+    it('без запису 25544 — ні маркера, ні лінії', () => {
+      const f = makeFake();
+      const layer = new SatellitesLayer(() => f.port);
+      layer.setData({ stations: iss.map((o) => ({ ...o, NORAD_CAT_ID: 1 })) });
+      expect(marker(layer)).toBeUndefined();
+      expect(orbit(layer)).toBeUndefined();
+    });
+
+    it('орбіта перераховується раз на 60 с now і при setAltitudeScale', () => {
+      const { layer, respond } = setup();
+      respond([10, 20, 400]);
+      const spy = vi.mocked(orbitTrack);
+      spy.mockClear();
+      layer.update(0.1, now);
+      expect(spy).toHaveBeenCalledTimes(1);
+      layer.update(0.1, new Date(now.getTime() + 30_000));
+      expect(spy).toHaveBeenCalledTimes(1);
+      layer.update(0.1, new Date(now.getTime() + 61_000));
+      expect(spy).toHaveBeenCalledTimes(2);
+      const before = orbitPos(layer);
+      layer.setAltitudeScale(3);
+      expect(orbitPos(layer)).not.toEqual(before);
+      const r = (a: number[]) => Math.hypot(a[0], a[1], a[2]);
+      expect(r(orbitPos(layer))).toBeGreaterThan(r(before));
+    });
+
+    it('при вимкненому stations маркер і лінія зникають, dispose їх чистить', () => {
+      const { layer } = setup();
+      const o = orbit(layer);
+      const spy = vi.spyOn(o.geometry, 'dispose');
+      layer.setData({});
+      expect(marker(layer)).toBeUndefined();
+      expect(orbit(layer)).toBeUndefined();
+      expect(spy).toHaveBeenCalled();
+      expect(layer.group.children).toHaveLength(0);
+    });
+
+    it('маркер і орбіта не перехоплюють raycast', () => {
+      const { layer, respond } = setup();
+      respond([0, 0, 400]);
+      layer.update(1, now);
+      const rc = new THREE.Raycaster(new THREE.Vector3(5, 0, 0), new THREE.Vector3(-1, 0, 0));
+      rc.params.Points = { threshold: 0.5 };
+      expect(rc.intersectObjects([marker(layer), orbit(layer)])).toHaveLength(0);
+    });
   });
 });
