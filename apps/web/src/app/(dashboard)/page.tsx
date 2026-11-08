@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { AppProvider, useAppContext } from "@/contexts/AppContext";
-import type { GlobeMode, IpBlock, InfraHoverInfo } from "@ipmap/types";
+import type { GlobeMode, IpBlock, InfraHoverInfo, SatelliteGroup } from "@ipmap/types";
+import { SatellitePanel } from "@/components/panels/SatellitePanel";
+import { useSatelliteData } from "@/hooks/useSatelliteData";
 import { TweaksPanel } from "@/components/panels/TweaksPanel";
 import { LoadingBar } from "@/components/panels/LoadingBar";
 import { CountryPanel } from "@/components/panels/CountryPanel";
 import { BlockPanel } from "@/components/panels/BlockPanel";
-import { getProviderLabel } from "@/lib/infraLabels";
+import { getProviderLabel, formatSatelliteHover } from "@/lib/infraLabels";
 import { getCachedAbuse, getAbuseColor } from "@/lib/abuseipdb";
 const LayerTogglePanel = dynamic(
   () => import("@/components/panels/LayerTogglePanel").then((m) => m.LayerTogglePanel),
@@ -31,6 +33,11 @@ function IpMapApp() {
   const [selectedBlock, setSelectedBlock] = useState<IpBlock | null>(null);
   const [hoveredBlock, setHoveredBlock] = useState<{ block: IpBlock; x: number; y: number } | null>(null);
   const [hoveredInfra, setHoveredInfra] = useState<{ info: InfraHoverInfo; x: number; y: number } | null>(null);
+
+  const [enabledGroups, setEnabledGroups] = useState<SatelliteGroup[]>(["stations"]);
+  const { data: satData, loading: satLoading, errors: satErrors } = useSatelliteData(enabledGroups);
+  const toggleGroup = (g: SatelliteGroup) =>
+    setEnabledGroups((prev) => (prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]));
 
   const countryData = selectedCountry
     ? countries.find((c) => c.cc === selectedCountry) ?? null
@@ -90,6 +97,7 @@ function IpMapApp() {
         cables={cables}
         dataCenters={dataCenters}
         ixps={ixps}
+        satellites={satData}
       />
       {isLoading && (
         <div
@@ -120,6 +128,13 @@ function IpMapApp() {
       )}
       <TweaksPanel />
       <LayerTogglePanel />
+      <SatellitePanel
+        enabled={enabledGroups}
+        data={satData}
+        loading={satLoading}
+        errors={satErrors}
+        onToggle={toggleGroup}
+      />
       {hoveredBlock && (() => {
         const abuse = getCachedAbuse(hoveredBlock.block.start);
         return (
@@ -193,6 +208,18 @@ function IpMapApp() {
                 {hoveredInfra.info.item.netCount.toLocaleString()} мереж-учасників
               </div>
             </>
+          ) : hoveredInfra.info.kind === "satellite" ? (
+            (() => {
+              const sat = formatSatelliteHover(hoveredInfra.info.item);
+              return (
+                <>
+                  <div style={{ fontWeight: 700 }}>{sat.title}</div>
+                  {sat.lines.map((line) => (
+                    <div key={line} style={{ color: "#94a3b8" }}>{line}</div>
+                  ))}
+                </>
+              );
+            })()
           ) : null}
         </div>
       )}
