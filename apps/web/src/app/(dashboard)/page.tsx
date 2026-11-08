@@ -183,7 +183,7 @@ function IpMapApp() {
                 {hoveredInfra.info.item.city}, {hoveredInfra.info.item.country}
               </div>
             </>
-          ) : (
+          ) : hoveredInfra.info.kind === "ixp" ? (
             <>
               <div style={{ fontWeight: 700 }}>{hoveredInfra.info.item.name}</div>
               <div style={{ color: "#94a3b8" }}>
@@ -193,7 +193,7 @@ function IpMapApp() {
                 {hoveredInfra.info.item.netCount.toLocaleString()} мереж-учасників
               </div>
             </>
-          )}
+          ) : null}
         </div>
       )}
     </>
