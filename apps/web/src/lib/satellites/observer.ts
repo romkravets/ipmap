@@ -21,11 +21,11 @@ export interface VisibleSat extends LookAngle {
   index: number;
 }
 
-// Супутники з elevation >= minElDeg, від найвищого до найнижчого; null пропускаються
+// Супутники з elevation > minElDeg, від найвищого до найнижчого; null пропускаються
 export function visibleAbove(look: (LookAngle | null)[], minElDeg = 10): VisibleSat[] {
   const out: VisibleSat[] = [];
   look.forEach((l, index) => {
-    if (l && l.elevationDeg >= minElDeg) out.push({ index, ...l });
+    if (l && l.elevationDeg > minElDeg) out.push({ index, ...l });
   });
   return out.sort((a, b) => b.elevationDeg - a.elevationDeg);
 }

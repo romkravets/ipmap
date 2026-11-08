@@ -41,10 +41,10 @@ describe('lookAt / visibleAbove', () => {
     expect(look[1]).not.toBeNull();
   });
 
-  it('пропускає null, сортує за спаданням, поріг 10°', () => {
-    const res = visibleAbove([la(20), null, la(9.9), la(45), la(10)]);
-    expect(res.map((r) => r.index)).toEqual([3, 0, 4]);
-    expect(res.map((r) => r.elevationDeg)).toEqual([45, 20, 10]);
+  it('пропускає null, сортує за спаданням, строго > 10° (рівно 10° виключено)', () => {
+    const res = visibleAbove([la(20), null, la(9.9), la(45), la(10), la(10.1)]);
+    expect(res.map((r) => r.index)).toEqual([3, 0, 5]);
+    expect(res.map((r) => r.elevationDeg)).toEqual([45, 20, 10.1]);
   });
 });
 
