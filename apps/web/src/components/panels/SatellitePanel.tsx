@@ -31,7 +31,10 @@ export function SatellitePanel({ enabled, data, loading, errors, onToggle }: Pro
       style={{
         position: "fixed",
         bottom: 16,
-        left: 16,
+        left: "50%",
+        transform: "translateX(-50%)",
+        width: 300,
+        maxWidth: "calc(100vw - 32px)",
         zIndex: 400,
         background: "rgba(0,0,0,0.78)",
         color: "#e2e8f0",
