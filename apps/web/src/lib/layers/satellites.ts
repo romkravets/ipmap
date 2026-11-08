@@ -15,6 +15,8 @@ const TICK_INTERVAL_S = 1;
 const BOUNDING_RADIUS = 20;
 const ORBIT_POINTS = 90;
 const ORBIT_REFRESH_MS = 60_000;
+// Розрив у часі між відповідями, після якого позиції не інтерполюються (хорда крізь Землю)
+const SNAP_GAP_MS = 3000;
 
 const GROUP_COLORS: Record<SatelliteGroup, string> = {
   stations: '#fde047',
@@ -38,6 +40,12 @@ interface GroupState {
   elapsed: number;
   sinceTick: number;
   inFlight: boolean;
+  // ms останньої відповіді воркера для групи
+  lastMs: number | null;
+}
+
+function isFiniteVertex(raw: Float32Array, i: number): boolean {
+  return Number.isFinite(raw[i * 3]) && Number.isFinite(raw[i * 3 + 1]) && Number.isFinite(raw[i * 3 + 2]);
 }
 
 export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
@@ -104,6 +112,7 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
         elapsed: 0,
         sinceTick: 0,
         inFlight: false,
+        lastMs: null,
       });
       this.worker.postMessage({ type: 'load', group: name, gen, omms });
     }
@@ -283,17 +292,29 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
     st.inFlight = false;
     if (msg.positions.length < st.omms.length * 3) return;
     const next = msg.positions;
-    const first = st.rawNext === null;
-    if (!first) {
+    const prevRaw = st.rawNext;
+    const snapAll = prevRaw === null || st.lastMs === null || Math.abs(msg.ms - st.lastMs) > SNAP_GAP_MS;
+    st.lastMs = msg.ms;
+    if (!snapAll) {
       // prev ← поточні відображені позиції (без стрибків)
       this.currentXyz(st, st.xyzPrev);
-      st.rawPrev = st.rawNext;
-    } else {
-      st.rawPrev = next;
     }
+    st.rawPrev = snapAll ? next : prevRaw;
     st.rawNext = next;
     this.toXyz(next, st.xyzNext);
-    if (first) st.xyzPrev.set(st.xyzNext);
+    if (snapAll) {
+      st.xyzPrev.set(st.xyzNext);
+    } else if (prevRaw) {
+      // вершини з нескінченними prev/next не інтерполюємо (інакше проліт через початок координат)
+      const n = st.omms.length;
+      for (let i = 0; i < n; i++) {
+        if (!isFiniteVertex(prevRaw, i) || !isFiniteVertex(next, i)) {
+          st.xyzPrev[i * 3] = st.xyzNext[i * 3];
+          st.xyzPrev[i * 3 + 1] = st.xyzNext[i * 3 + 1];
+          st.xyzPrev[i * 3 + 2] = st.xyzNext[i * 3 + 2];
+        }
+      }
+    }
     st.elapsed = 0;
     this.writePositions(st);
     this.updateIssMarker();

@@ -31,9 +31,9 @@ function setup() {
   const layer = new SatellitesLayer(() => f.port);
   layer.setData({ stations: iss });
   const loadMsg = f.sent[0] as Extract<SatWorkerRequest, { type: 'load' }>;
-  const respond = (arr: number[], gen = loadMsg.gen) =>
+  const respond = (arr: number[], gen = loadMsg.gen, ms = 0) =>
     f.port.onmessage!({
-      data: { type: 'positions', group: 'stations', gen, ms: 0, positions: new Float32Array(arr) },
+      data: { type: 'positions', group: 'stations', gen, ms, positions: new Float32Array(arr) },
     });
   const pts = () => layer.group.children.find((c) => c.userData.group === 'stations') as THREE.Points;
   const pos = () => Array.from((pts().geometry.getAttribute('position') as THREE.BufferAttribute).array);
@@ -92,6 +92,42 @@ describe('SatellitesLayer', () => {
     respond([0, -179.9, 400]);
     layer.update(0.5, now);
     expect(pos()[0]).toBeCloseTo(-(1 + 400 / 6371), 2);
+  });
+
+  describe('розрив у часі та NaN', () => {
+    it('відповідь із ms +10 с — snap до нової позиції, +1 с — інтерполяція', () => {
+      const { respond, layer, pos } = setup();
+      const a = latLngToVec3(0, 0, 1 + 400 / 6371);
+      const b = latLngToVec3(0, 90, 1 + 400 / 6371);
+      respond([0, 0, 400], undefined, 0);
+      respond([0, 90, 400], undefined, 10_000);
+      layer.update(0.5, now);
+      expect(pos()[0]).toBeCloseTo(b.x, 5);
+      expect(pos()[2]).toBeCloseTo(b.z, 5);
+      respond([0, 0, 400], undefined, 11_000);
+      layer.update(0.5, now);
+      // зі snap-стану (b) до a за 1 с: середина
+      expect(pos()[0]).toBeCloseTo((a.x + b.x) / 2, 5);
+      expect(pos()[2]).toBeCloseTo((a.z + b.z) / 2, 5);
+    });
+
+    it('NaN -> валідна вершина без інтерполяції з початку координат', () => {
+      const { respond, layer, pos } = setup();
+      respond([NaN, NaN, NaN], undefined, 0);
+      respond([0, 0, 400], undefined, 1000);
+      layer.update(0.1, now);
+      const e = latLngToVec3(0, 0, 1 + 400 / 6371);
+      expect(pos()[0]).toBeCloseTo(e.x, 5);
+      expect(pos()[2]).toBeCloseTo(e.z, 5);
+    });
+
+    it('валідна -> NaN вершина одразу (0,0,0)', () => {
+      const { respond, layer, pos } = setup();
+      respond([0, 0, 400], undefined, 0);
+      respond([NaN, NaN, NaN], undefined, 1000);
+      layer.update(0.1, now);
+      expect(pos()).toEqual([0, 0, 0]);
+    });
   });
 
   it('один tick у польоті; наступний не раніше ніж за 1 с', () => {
