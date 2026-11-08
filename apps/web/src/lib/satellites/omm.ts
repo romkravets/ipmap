@@ -45,3 +45,8 @@ export function compressOmm(raw: unknown): SatOmm[] {
   }
   return out;
 }
+
+// Відкидає GEO-супутники (MEAN_MOTION < 2 об/добу; GEO ≈ 1.0027) — у v1 їх не показуємо
+export function filterGeo(omms: SatOmm[]): SatOmm[] {
+  return omms.filter((o) => o.MEAN_MOTION >= 2);
+}

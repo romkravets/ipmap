@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { json2satrec } from 'satellite.js';
-import { SATELLITE_GROUPS, SAT_OMM_FIELDS, compressOmm, isSatelliteGroup } from '../omm';
+import { SATELLITE_GROUPS, SAT_OMM_FIELDS, compressOmm, filterGeo, isSatelliteGroup } from '../omm';
 import fixture from '../__fixtures__/iss-omm.json';
 
 describe('isSatelliteGroup', () => {
@@ -33,5 +33,18 @@ describe('compressOmm', () => {
   it('поля достатні для json2satrec', () => {
     const satrec = json2satrec(compressOmm(fixture)[0]);
     expect(satrec.error).toBe(0);
+  });
+});
+
+describe('filterGeo', () => {
+  const iss = compressOmm(fixture)[0];
+  it('лишає ISS', () => {
+    expect(filterGeo([iss])).toEqual([iss]);
+  });
+  it('відкидає GEO (MEAN_MOTION 1.0027)', () => {
+    expect(filterGeo([iss, { ...iss, MEAN_MOTION: 1.0027 }])).toEqual([iss]);
+  });
+  it('межа 2.0 лишається', () => {
+    expect(filterGeo([{ ...iss, MEAN_MOTION: 2 }])).toHaveLength(1);
   });
 });

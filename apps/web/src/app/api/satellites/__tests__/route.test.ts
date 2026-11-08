@@ -146,4 +146,15 @@ describe('GET /api/satellites', () => {
     expect(res.status).toBe(200)
     expect((await res.json())[0].OBJECT_NAME).toBe(issFixture[0].OBJECT_NAME)
   })
+
+  it('відкидає GEO-записи', async () => {
+    const leo = { ...issFixture[0], OBJECT_NAME: 'LEO' }
+    const geo = { ...issFixture[0], OBJECT_NAME: 'GEO', MEAN_MOTION: 1.0027 }
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, text: () => Promise.resolve(JSON.stringify([leo, geo])) }),
+    )
+    const body = await (await call('?group=weather')).json()
+    expect(body.map((s: { OBJECT_NAME: string }) => s.OBJECT_NAME)).toEqual(['LEO'])
+  })
 })

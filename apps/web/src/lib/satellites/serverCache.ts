@@ -1,5 +1,5 @@
 import type { SatOmm, SatelliteGroup } from '@ipmap/types'
-import { compressOmm } from './omm'
+import { compressOmm, filterGeo } from './omm'
 
 // Серверний кеш: Next Data Cache не зберігає відповіді > 2 МБ (Starlink ≈ 4.7 МБ),
 // тому тримаємо стиснутий масив у пам'яті процесу.
@@ -21,7 +21,7 @@ async function fetchGroup(group: SatelliteGroup): Promise<SatOmm[]> {
   if (!upstream.ok) throw new Error(`upstream ${upstream.status}`)
   // CelesTrak може віддати 200 з не-JSON тілом ("No GP data found")
   const raw: unknown = JSON.parse(await upstream.text())
-  const sats = compressOmm(raw)
+  const sats = filterGeo(compressOmm(raw))
   if (sats.length === 0) throw new Error('empty upstream')
   return sats
 }
