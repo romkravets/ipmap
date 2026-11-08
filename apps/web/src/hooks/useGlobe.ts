@@ -3,6 +3,8 @@
 import { TWEAK_DEFAULTS } from "@/lib/constants";
 import { latLngToVec3, greatCircleArc } from "@/lib/geo3d";
 import { createLayerRegistry } from "@/lib/layers/registry";
+import { SatellitesLayer, type SatelliteLayerData } from "@/lib/layers/satellites";
+import type { SatWorkerPort } from "@/lib/satellites/protocol";
 import { blockMarkerVisual } from "@/lib/markerScale";
 import { getSunLatLng } from "@/lib/sun";
 import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint, InfraHoverInfo } from "@ipmap/types";
@@ -160,6 +162,7 @@ export interface UseGlobeOptions {
   cables?: SubmarineCable[];
   dataCenters?: DataCenter[];
   ixps?: IxPoint[];
+  satellites?: SatelliteLayerData;
 }
 
 export function useGlobe(
@@ -1061,8 +1064,13 @@ export function useGlobe(
         get visible() { return borderGroup.visible; },
         set visible(v: boolean) { borderGroup.visible = v; politicalGroup.visible = v; },
       };
+      // Шар супутників реєструється ДО знімка globeLayerGroups (інакше його немає в toggle-мапі)
+      const satLayer = new SatellitesLayer(
+        () => new Worker(new URL("../lib/satellites/sat.worker.ts", import.meta.url)) as unknown as SatWorkerPort,
+      );
+      registry.add("satellites", satLayer, scene);
       window.globeLayerGroups = {
-        cables:      cableGroup,
+        cables:     cableGroup,
         borders:     bordersProxy,
         datacenters: dcGroup,
         ixps:        ixpGroup,
@@ -1327,6 +1335,8 @@ export function useGlobe(
       const lastSelectedRef = { current: undefined as string | null | undefined };
       // Відстежуємо зміни інфраструктурних даних
       const lastCablesRef = { current: optionsRef.current.cables };
+      const lastSatsRef = { current: undefined as SatelliteLayerData | undefined };
+      const lastSatAltRef = { current: false };
       const lastDcsRef = { current: optionsRef.current.dataCenters };
       const lastIxpsRef = { current: optionsRef.current.ixps };
 
@@ -1425,6 +1435,18 @@ export function useGlobe(
         if (newCountries !== lastCountriesRef.current) {
           lastCountriesRef.current = newCountries;
           if (newCountries) buildCountryMarkers(newCountries);
+        }
+
+        // Дані супутників та масштаб висоти — лише при зміні
+        const curSats = optionsRef.current.satellites;
+        if (curSats !== lastSatsRef.current) {
+          lastSatsRef.current = curSats;
+          if (curSats) satLayer.setData(curSats);
+        }
+        const satAlt = !!tweaks.satAltExaggerate;
+        if (satAlt !== lastSatAltRef.current) {
+          lastSatAltRef.current = satAlt;
+          satLayer.setAltitudeScale(satAlt ? 3 : 1);
         }
 
         // Rebuild cable/dc/ixp layers when data props change

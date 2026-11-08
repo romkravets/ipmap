@@ -2,6 +2,7 @@
 
 import { useRef, memo } from 'react'
 import { useGlobe } from '@/hooks/useGlobe'
+import type { SatelliteLayerData } from '@/lib/layers/satellites'
 import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint, InfraHoverInfo } from '@ipmap/types'
 
 interface GlobeSceneProps {
@@ -19,6 +20,7 @@ interface GlobeSceneProps {
   cables?: SubmarineCable[]
   dataCenters?: DataCenter[]
   ixps?: IxPoint[]
+  satellites?: SatelliteLayerData
 }
 
 export const GlobeScene = memo(function GlobeScene({
@@ -36,9 +38,10 @@ export const GlobeScene = memo(function GlobeScene({
   cables,
   dataCenters,
   ixps,
+  satellites,
 }: GlobeSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  useGlobe(canvasRef, { mode, tweaks, countries, selectedCountry, countryData, countryBlocks, selectedBlock, onCountryClick, onBlockClick, onBlockHover, onInfraHover, cables, dataCenters, ixps })
+  useGlobe(canvasRef, { mode, tweaks, countries, selectedCountry, countryData, countryBlocks, selectedBlock, onCountryClick, onBlockClick, onBlockHover, onInfraHover, cables, dataCenters, ixps, satellites })
 
   return (
     <canvas

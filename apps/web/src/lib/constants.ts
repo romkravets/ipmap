@@ -5,4 +5,5 @@ export const TWEAK_DEFAULTS = {
   showSunMarker: true,
   markerPulse: true,
   timeOffset: 0,
+  satAltExaggerate: false,
 };

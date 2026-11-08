@@ -9,6 +9,7 @@ export interface TweakValues {
   showSunMarker: boolean;
   markerPulse: boolean;
   timeOffset: number;
+  satAltExaggerate: boolean;
 }
 
 // ── App state ─────────────────────────────────────────────────────────────────
