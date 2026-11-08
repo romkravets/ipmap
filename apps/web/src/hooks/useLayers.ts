@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-export type LayerKey = "cities" | "resources" | "straits" | "cables" | "borders" | "seasons" | "datacenters" | "ixps";
+export type LayerKey = "cities" | "resources" | "straits" | "cables" | "borders" | "seasons" | "datacenters" | "ixps" | "satellites";
 
 const LAYER_DEFAULTS: Record<LayerKey, boolean> = {
   cities:      true,
@@ -13,12 +13,15 @@ const LAYER_DEFAULTS: Record<LayerKey, boolean> = {
   seasons:     true,
   datacenters: true,
   ixps:        true,
+  satellites:  true,
 };
 
 // Read from window or return default
 function getLayerState(): Record<LayerKey, boolean> {
   if (typeof window === "undefined") return { ...LAYER_DEFAULTS };
-  return (window as Window & { globeLayers?: Record<LayerKey, boolean> }).globeLayers ?? { ...LAYER_DEFAULTS };
+  // Мерж з дефолтами: старий стан без нових ключів (напр. satellites) не дає undefined
+  const stored = (window as Window & { globeLayers?: Partial<Record<LayerKey, boolean>> }).globeLayers;
+  return { ...LAYER_DEFAULTS, ...stored };
 }
 
 /** Hook for a single layer's visibility. Reacts to globe-layers-changed events. */
@@ -54,13 +57,10 @@ export function useLayerControls(): [Record<LayerKey, boolean>, (key: LayerKey) 
     (window as Window & { globeLayers?: Record<LayerKey, boolean> }).globeLayers = next;
 
     // Update Three.js groups if exposed
-    const groups = (window as Window & { globeLayerGroups?: Partial<Record<LayerKey, { visible: boolean }>> }).globeLayerGroups;
-    if (groups) {
-      if (key === "cables"      && groups.cables)      groups.cables.visible      = next.cables;
-      if (key === "borders"     && groups.borders)     groups.borders.visible     = next.borders;
-      if (key === "datacenters" && groups.datacenters) groups.datacenters.visible = next.datacenters;
-      if (key === "ixps"        && groups.ixps)        groups.ixps.visible        = next.ixps;
-    }
+    // Загальний toggle: ключі без групи мовчки пропускаються
+    const groups = (window as Window & { globeLayerGroups?: Partial<Record<string, { visible: boolean }>> }).globeLayerGroups;
+    const group = groups?.[key];
+    if (group) group.visible = next[key];
 
     window.dispatchEvent(new CustomEvent("globe-layers-changed"));
   };
