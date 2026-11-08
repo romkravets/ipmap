@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import type { SatelliteGroup } from "@ipmap/types";
+import { createPropagator } from "@/lib/satellites/propagator";
+import { KREMENETS, visibleAbove, type Observer } from "@/lib/satellites/observer";
 import type { SatelliteLayerData } from "@/lib/layers/satellites";
 import { SATELLITE_GROUPS } from "@/lib/satellites/omm";
 import { useLayer } from "@/hooks/useLayers";
@@ -20,11 +23,36 @@ interface Props {
   loading: SatelliteGroup[];
   errors: Partial<Record<SatelliteGroup, string>>;
   onToggle: (g: SatelliteGroup) => void;
+  observer?: Observer;
+  nowMs?: number;
 }
 
-export function SatellitePanel({ enabled, data, loading, errors, onToggle }: Props) {
+const MAX_ROWS = 10;
+
+interface Row {
+  name: string;
+  elevationDeg: number;
+}
+
+export function SatellitePanel({ enabled, data, loading, errors, onToggle, observer = KREMENETS, nowMs }: Props) {
   const visible = useLayer("satellites");
+  const [rows, setRows] = useState<Row[] | null>(null);
   if (!visible) return null;
+
+  const loadedGroups = enabled.filter((g) => (data[g]?.length ?? 0) > 0);
+
+  // Обчислення лише за кліком, в головному потоці
+  const computeNow = () => {
+    const omms = loadedGroups.flatMap((g) => data[g] ?? []);
+    const names = omms.map((o) => o.OBJECT_NAME);
+    const prop = createPropagator();
+    prop.load(omms);
+    setRows(
+      visibleAbove(prop.lookAt(nowMs ?? Date.now(), observer))
+        .slice(0, MAX_ROWS)
+        .map((v) => ({ name: names[v.index], elevationDeg: v.elevationDeg })),
+    );
+  };
 
   return (
     <div
@@ -68,6 +96,15 @@ export function SatellitePanel({ enabled, data, loading, errors, onToggle }: Pro
           </div>
         );
       })}
+      <button type="button" disabled={loadedGroups.length === 0} onClick={computeNow}>
+        Над Кременцем зараз
+      </button>
+      {rows &&
+        (rows.length === 0 ? (
+          <div style={{ color: "#94a3b8" }}>Зараз над Кременцем немає супутників вище 10°</div>
+        ) : (
+          rows.map((r, i) => <div key={i}>{`${r.name} — ${r.elevationDeg.toFixed(1)}°`}</div>)
+        ))}
     </div>
   );
 }

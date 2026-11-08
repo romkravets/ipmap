@@ -1,12 +1,18 @@
-import { json2satrec, propagate, gstime, eciToGeodetic, degreesLat, degreesLong } from 'satellite.js';
+import {
+  json2satrec, propagate, gstime, eciToGeodetic, eciToEcf, ecfToLookAngles,
+  degreesLat, degreesLong, degreesToRadians, radiansToDegrees,
+} from 'satellite.js';
 import type { SatRec } from 'satellite.js';
 import type { SatOmm, SatPosition } from '@ipmap/types';
+import type { LookAngle, Observer } from './observer';
 
 export interface Propagator {
   readonly size: number;
   load(omms: SatOmm[]): void;
   // Буфер довжини 3 * size: [lat°, lng°, altKm] на супутник; індекс = індекс в omms
   positionsAt(ms: number): Float32Array;
+  // Кути спостереження за індексами; null для супутників, які неможливо розрахувати
+  lookAt(ms: number, observer: Observer): (LookAngle | null)[];
 }
 
 // Запис, який неможливо розрахувати, позначається null (дає NaN-трійку)
@@ -57,6 +63,33 @@ export function createPropagator(): Propagator {
         out[i * 3 + 2] = pos ? pos.altKm : NaN;
       }
       return out;
+    },
+    lookAt(ms, observer) {
+      const date = new Date(ms);
+      const gmst = gstime(date);
+      // Спостерігач: геодезичні радіани та км
+      const obs = {
+        latitude: degreesToRadians(observer.lat),
+        longitude: degreesToRadians(observer.lng),
+        height: observer.altKm,
+      };
+      return recs.map((rec) => {
+        if (!rec) return null;
+        try {
+          const pv = propagate(rec, date);
+          if (!pv || !pv.position) return null;
+          // ECI -> ECF (км) через gmst
+          const ecf = eciToEcf(pv.position, gmst as ReturnType<typeof gstime>);
+          const la = ecfToLookAngles(obs, ecf);
+          const elevationDeg = radiansToDegrees(la.elevation);
+          const azimuthDeg = radiansToDegrees(la.azimuth);
+          const rangeKm = la.rangeSat;
+          if (![elevationDeg, azimuthDeg, rangeKm].every(Number.isFinite)) return null;
+          return { elevationDeg, azimuthDeg, rangeKm };
+        } catch {
+          return null;
+        }
+      });
     },
   };
 }
