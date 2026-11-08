@@ -40,6 +40,38 @@ describe('useSatelliteData', () => {
     expect(f).toHaveBeenCalledTimes(2)
   })
 
+  it('data зберігає посилання при ререндері з тим самим складом груп', async () => {
+    vi.stubGlobal('fetch', ok())
+    const { result, rerender } = renderHook(({ e }) => useSatelliteData(e), {
+      initialProps: { e: ['stations'] as SatelliteGroup[] },
+    })
+    await waitFor(() => expect(result.current.data.stations).toBeDefined())
+    const before = result.current.data
+    rerender({ e: ['stations'] })
+    expect(result.current.data).toBe(before)
+    rerender({ e: ['stations'] })
+    expect(result.current.data).toBe(before)
+  })
+
+  it('data отримує нове посилання після завершення fetch і зміни груп', async () => {
+    vi.stubGlobal('fetch', ok())
+    const { result, rerender } = renderHook(({ e }) => useSatelliteData(e), {
+      initialProps: { e: ['stations'] as SatelliteGroup[] },
+    })
+    const initial = result.current.data
+    await waitFor(() => expect(result.current.data.stations).toBeDefined())
+    const loaded = result.current.data
+    expect(loaded).not.toBe(initial)
+    rerender({ e: ['stations', 'starlink'] })
+    const enabledRef = result.current.data
+    expect(enabledRef).not.toBe(loaded)
+    await waitFor(() => expect(result.current.data.starlink).toBeDefined())
+    expect(result.current.data).not.toBe(enabledRef)
+    const withBoth = result.current.data
+    rerender({ e: ['stations'] })
+    expect(result.current.data).not.toBe(withBoth)
+  })
+
   it('після помилки повторне вмикання робить новий fetch, помилка очищується', async () => {
     const f = vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => [omm(1)] })

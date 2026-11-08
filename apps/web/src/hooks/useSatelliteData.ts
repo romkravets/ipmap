@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SatOmm, SatelliteGroup } from "@ipmap/types";
 import type { SatelliteLayerData } from "@/lib/layers/satellites";
 import { fetchSatelliteGroup } from "@/lib/satellites/client";
@@ -19,7 +19,7 @@ export interface SatelliteDataState {
 export function useSatelliteData(enabled: SatelliteGroup[]): SatelliteDataState {
   const cache = useRef<Partial<Record<SatelliteGroup, SatOmm[]>>>({});
   const inFlight = useRef<Set<SatelliteGroup>>(new Set());
-  const [, setVersion] = useState(0);
+  const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState<SatelliteGroup[]>([]);
   const [errors, setErrors] = useState<Partial<Record<SatelliteGroup, string>>>({});
 
@@ -51,10 +51,15 @@ export function useSatelliteData(enabled: SatelliteGroup[]): SatelliteDataState 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
-  const data: SatelliteLayerData = {};
-  for (const group of enabled) {
-    const items = cache.current[group];
-    if (items) data[group] = items;
-  }
+  // Стабільне посилання: нове лише при зміні складу груп або завершенні fetch,
+  // інакше useGlobe перезавантажує шар супутників на кожен ререндер (hover тощо)
+  const data = useMemo<SatelliteLayerData>(() => {
+    const out: SatelliteLayerData = {};
+    for (const group of key ? (key.split(",") as SatelliteGroup[]) : []) {
+      const items = cache.current[group];
+      if (items) out[group] = items;
+    }
+    return out;
+  }, [key, version]);
   return { data, loading, errors };
 }
