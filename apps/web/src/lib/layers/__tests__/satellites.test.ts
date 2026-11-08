@@ -120,6 +120,18 @@ describe('SatellitesLayer', () => {
     expect(layer.pick({ object: new THREE.Points(), index: 0 } as THREE.Intersection)).toBeNull();
   });
 
+  it('raycast влучає в MEO-супутник поза малим колом навколо глобуса', () => {
+    const { respond, layer, pts } = setup();
+    const r = 1 + 20200 / 6371;
+    respond([0, 0, 20200]);
+    layer.update(1, now);
+    const rc = new THREE.Raycaster(new THREE.Vector3(r, 0, 5), new THREE.Vector3(0, 0, -1));
+    rc.params.Points = { threshold: layer.pickThreshold };
+    const hits = rc.intersectObject(pts());
+    expect(hits.length).toBeGreaterThan(0);
+    expect(layer.pick(hits[0])).toMatchObject({ kind: 'satellite' });
+  });
+
   it('dispose викликає terminate, повторний виклик безпечний', () => {
     const { layer, port } = setup();
     layer.dispose();

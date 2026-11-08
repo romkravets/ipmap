@@ -9,6 +9,7 @@ export type SatelliteLayerData = Partial<Record<SatelliteGroup, SatOmm[]>>;
 const EARTH_R_KM = 6371;
 const MU = 398600.4418;
 const TICK_INTERVAL_S = 1;
+const BOUNDING_RADIUS = 20;
 
 const GROUP_COLORS: Record<SatelliteGroup, string> = {
   stations: '#fde047',
@@ -69,8 +70,9 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
       const n = omms.length;
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-      // Позиції змінюються щоразу — фіксована сфера із запасом замість перерахунку
-      geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 2);
+      // Позиції змінюються щоразу — фіксована сфера, що покриває найвищу орбіту
+      // (1 + 3·36000/6371 ≈ 18 з запасом), інакше Points.raycast відсікає MEO
+      geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), BOUNDING_RADIUS);
       const material = new THREE.PointsMaterial({
         color: GROUP_COLORS[name],
         size: 3,
