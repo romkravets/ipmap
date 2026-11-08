@@ -70,6 +70,18 @@ describe('SatellitePanel', () => {
       expect(screen.getByText('Зараз над Кременцем немає супутників вище 10°')).toBeTruthy()
     })
 
+    it('показує найближчий видимий проліт МКС', () => {
+      render(<SatellitePanel {...base} enabled={['stations']} data={{ stations: [iss] }} observer={under} nowMs={epochMs} isDark={() => true} />)
+      fireEvent.click(screen.getByRole('button', { name }))
+      expect(screen.getByText(/Найближчий видимий проліт МКС: \d{2}:\d{2}–\d{2}:\d{2} \(макс\. \d+°\)/)).toBeTruthy()
+    })
+
+    it('без прольоту показує повідомлення', () => {
+      render(<SatellitePanel {...base} enabled={['stations']} data={{ stations: [iss] }} observer={under} nowMs={epochMs} isDark={() => false} />)
+      fireEvent.click(screen.getByRole('button', { name }))
+      expect(screen.getByText('Видимих прольотів МКС найближчими 24 год немає')).toBeTruthy()
+    })
+
     it('кнопка вимкнена, коли немає даних', () => {
       render(<SatellitePanel {...base} />)
       expect((screen.getByRole('button', { name }) as HTMLButtonElement).disabled).toBe(true)

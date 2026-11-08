@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import type { SatOmm } from '@ipmap/types';
 import { compressOmm } from '../omm';
 import { createPropagator } from '../propagator';
-import { visibleAbove, KREMENETS, type LookAngle } from '../observer';
+import { visibleAbove, KREMENETS, sunElevationDeg, nextVisibleIssPass, type LookAngle } from '../observer';
+import { getSunLatLng } from '@/lib/sun';
 import fixture from '../__fixtures__/iss-omm.json';
 
 const iss: SatOmm = compressOmm(fixture)[0];
@@ -44,5 +45,40 @@ describe('lookAt / visibleAbove', () => {
     const res = visibleAbove([la(20), null, la(9.9), la(45), la(10)]);
     expect(res.map((r) => r.index)).toEqual([3, 0, 4]);
     expect(res.map((r) => r.elevationDeg)).toEqual([45, 20, 10]);
+  });
+});
+
+describe('sunElevationDeg', () => {
+  const sun = getSunLatLng(new Date(epochMs));
+  it('≈ 90° у підсонячній точці', () => {
+    expect(sunElevationDeg({ lat: sun.lat, lng: sun.lng, altKm: 0 }, epochMs)).toBeCloseTo(90, 0);
+  });
+  it('≈ −90° в антиподі', () => {
+    const anti = { lat: -sun.lat, lng: sun.lng > 0 ? sun.lng - 180 : sun.lng + 180, altKm: 0 };
+    expect(Math.abs(sunElevationDeg(anti, epochMs) + 90)).toBeLessThan(0.5);
+  });
+});
+
+describe('nextVisibleIssPass', () => {
+  const p = createPropagator();
+  p.load([iss]);
+  const t = epochMs + 10 * 60_000;
+  const [lat, lng] = p.positionsAt(t);
+  const under = { lat, lng, altKm: 0 };
+  const anti = { lat: -lat, lng: lng > 0 ? lng - 180 : lng + 180, altKm: 0 };
+
+  it('знаходить проліт над підсупутниковою точкою', () => {
+    const pass = nextVisibleIssPass(iss, under, epochMs, 1, () => true);
+    expect(pass).not.toBeNull();
+    expect(pass!.maxElevationDeg).toBeGreaterThan(80);
+    expect(pass!.startMs).toBeLessThanOrEqual(t);
+    expect(pass!.endMs).toBeGreaterThanOrEqual(t);
+  });
+  it('null, коли не темно', () => {
+    expect(nextVisibleIssPass(iss, under, epochMs, 1, () => false)).toBeNull();
+  });
+  it('null в антиподі (не помилка)', () => {
+    // Вікно 15 хв: за повний виток (~92 хв) МКС сама б пролетіла над антиподом
+    expect(nextVisibleIssPass(iss, anti, epochMs, 0.25, () => true)).toBeNull();
   });
 });
