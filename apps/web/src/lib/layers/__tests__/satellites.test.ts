@@ -150,6 +150,32 @@ describe('SatellitesLayer', () => {
     expect(ticks()).toHaveLength(3);
   });
 
+  describe('збій воркера', () => {
+    const ticks = (sent: SatWorkerRequest[]) => sent.filter((m) => m.type === 'tick');
+
+    it('onerror скидає inFlight і попереджає', () => {
+      const { layer, sent, port } = setup();
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      layer.update(1, now);
+      expect(ticks(sent)).toHaveLength(1);
+      port.onerror!(new Error('boom'));
+      expect(warn).toHaveBeenCalledWith('[satellites] worker error', expect.any(Error));
+      layer.update(1, now);
+      expect(ticks(sent)).toHaveLength(2);
+      warn.mockRestore();
+    });
+
+    it('без відповіді tick повторюється після >5 с', () => {
+      const { layer, sent } = setup();
+      layer.update(1, now);
+      expect(ticks(sent)).toHaveLength(1);
+      layer.update(4, now);
+      expect(ticks(sent)).toHaveLength(1);
+      layer.update(1.5, now);
+      expect(ticks(sent)).toHaveLength(2);
+    });
+  });
+
   it('pick повертає супутник; невідомі об’єкти/індекси -> null', () => {
     const { respond, layer, pts } = setup();
     respond([0, 0, 400]);

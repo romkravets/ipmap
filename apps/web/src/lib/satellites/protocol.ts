@@ -19,5 +19,6 @@ export type SatWorkerResponse = {
 export interface SatWorkerPort {
   postMessage(msg: SatWorkerRequest): void;
   onmessage: ((e: { data: SatWorkerResponse }) => void) | null;
+  onerror?: ((e: unknown) => void) | null;
   terminate(): void;
 }

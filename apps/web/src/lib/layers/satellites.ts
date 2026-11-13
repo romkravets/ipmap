@@ -17,6 +17,8 @@ const ORBIT_POINTS = 90;
 const ORBIT_REFRESH_MS = 60_000;
 // Розрив у часі між відповідями, після якого позиції не інтерполюються (хорда крізь Землю)
 const SNAP_GAP_MS = 3000;
+// Якщо відповідь воркера не прийшла за цей час — дозволяємо повторний tick
+const IN_FLIGHT_TIMEOUT_S = 5;
 
 const GROUP_COLORS: Record<SatelliteGroup, string> = {
   stations: '#fde047',
@@ -40,6 +42,8 @@ interface GroupState {
   elapsed: number;
   sinceTick: number;
   inFlight: boolean;
+  // Накопичений dt, поки tick у польоті
+  inFlightFor: number;
   // ms останньої відповіді воркера для групи
   lastMs: number | null;
 }
@@ -68,6 +72,13 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
   constructor(createWorker: () => SatWorkerPort) {
     this.worker = createWorker();
     this.worker.onmessage = (e) => this.onResponse(e.data);
+    this.worker.onerror = (e) => {
+      console.warn('[satellites] worker error', e);
+      for (const st of this.states.values()) {
+        st.inFlight = false;
+        st.inFlightFor = 0;
+      }
+    };
   }
 
   setData(data: SatelliteLayerData): void {
@@ -112,6 +123,7 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
         elapsed: 0,
         sinceTick: 0,
         inFlight: false,
+        inFlightFor: 0,
         lastMs: null,
       });
       this.worker.postMessage({ type: 'load', group: name, gen, omms });
@@ -135,8 +147,16 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
     for (const [name, st] of this.states) {
       st.elapsed += dt;
       st.sinceTick += dt;
+      if (st.inFlight) {
+        st.inFlightFor += dt;
+        if (st.inFlightFor > IN_FLIGHT_TIMEOUT_S) {
+          st.inFlight = false;
+          st.inFlightFor = 0;
+        }
+      }
       if (!st.inFlight && st.sinceTick >= TICK_INTERVAL_S) {
         st.inFlight = true;
+        st.inFlightFor = 0;
         st.sinceTick = 0;
         this.worker.postMessage({ type: 'tick', group: name, gen: st.gen, ms: now.getTime() + 1000 });
       }
@@ -178,6 +198,7 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
     this.disposed = true;
     this.worker.terminate();
     this.worker.onmessage = null;
+    this.worker.onerror = null;
     for (const [name, st] of [...this.states]) this.removeState(name, st);
     this.syncIss();
   }
@@ -290,6 +311,7 @@ export class SatellitesLayer implements GlobeLayer<SatelliteLayerData> {
     const st = this.states.get(msg.group);
     if (!st || st.gen !== msg.gen) return;
     st.inFlight = false;
+    st.inFlightFor = 0;
     if (msg.positions.length < st.omms.length * 3) return;
     const next = msg.positions;
     const prevRaw = st.rawNext;
