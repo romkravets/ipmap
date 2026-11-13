@@ -19,6 +19,7 @@ const LAYERS: LayerDef[] = [
   { key: "seasons",     label: "Seasons",      icon: "◑" },
   { key: "datacenters", label: "Data Centers", icon: "⬡" },
   { key: "ixps",        label: "IXPs",         icon: "◉" },
+  { key: "satellites",  label: "Satellites",   icon: "✦" },
 ];
 
 const ACTIVE_COLORS: Record<LayerKey, string> = {
@@ -30,6 +31,7 @@ const ACTIVE_COLORS: Record<LayerKey, string> = {
   seasons:     "#fbbf24",
   datacenters: "#f97316",
   ixps:        "#a78bfa",
+  satellites:  "#e879f9",
 };
 
 export function LayerTogglePanel() {

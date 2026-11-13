@@ -15,7 +15,7 @@ const ContentSecurityPolicy = [
   // RDAP (bootstrap + 5 RIR) для BlockPanel + текстури з CDN + raw GitHub для GeoJSON/textures
   "connect-src 'self' https://rdap.org https://rdap.db.ripe.net https://rdap.arin.net https://rdap.apnic.net https://rdap.lacnic.net https://rdap.afrinic.net https://unpkg.com https://cdn.jsdelivr.net https://raw.githubusercontent.com https://api.github.com",
   "img-src 'self' data: blob: https://unpkg.com https://cdn.jsdelivr.net https://raw.githubusercontent.com",
-  "worker-src blob:",
+  "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -45,6 +45,19 @@ const securityHeaders = [
 const nextConfig = {
   poweredByHeader: false,
   eslint: { ignoreDuringBuilds: true },
+
+  // satellite.js підтягує wasm-рантайми з node:-імпортами; у браузері/воркері вони не потрібні
+  webpack(config, { isServer, webpack }) {
+    if (!isServer) {
+      // node:-схеми не обробляються webpack для web-таргету; замінюємо на порожній модуль
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(/^node:/, (resource) => {
+          resource.request = require.resolve("./src/lib/satellites/emptyModule.js");
+        }),
+      );
+    }
+    return config;
+  },
 
   async headers() {
     return [

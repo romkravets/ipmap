@@ -1,38 +1,15 @@
 "use client";
 
 import { TWEAK_DEFAULTS } from "@/lib/constants";
+import { latLngToVec3, greatCircleArc } from "@/lib/geo3d";
+import { createLayerRegistry } from "@/lib/layers/registry";
+import { SatellitesLayer, type SatelliteLayerData } from "@/lib/layers/satellites";
+import type { SatWorkerPort } from "@/lib/satellites/protocol";
 import { blockMarkerVisual } from "@/lib/markerScale";
 import { getSunLatLng } from "@/lib/sun";
 import type { GlobeMode, TweakValues, CountryAlloc, IpBlock, SubmarineCable, DataCenter, IxPoint, InfraHoverInfo } from "@ipmap/types";
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function latLngToVec3(lat: number, lng: number, r = 1): THREE.Vector3 {
-  const phi = (90 - lat) * (Math.PI / 180);
-  const theta = (lng + 180) * (Math.PI / 180);
-  return new THREE.Vector3(
-    -r * Math.sin(phi) * Math.cos(theta),
-    r * Math.cos(phi),
-    r * Math.sin(phi) * Math.sin(theta),
-  );
-}
-
-function greatCircleArc(
-  p1: THREE.Vector3,
-  p2: THREE.Vector3,
-  peakAlt: number,
-  segments = 64,
-): THREE.Vector3[] {
-  const pts: THREE.Vector3[] = [];
-  for (let i = 0; i <= segments; i++) {
-    const t = i / segments;
-    const pt = new THREE.Vector3().lerpVectors(p1, p2, t).normalize();
-    const alt = 1 + peakAlt * Math.sin(t * Math.PI);
-    pts.push(pt.multiplyScalar(alt));
-  }
-  return pts;
-}
 
 // ── Globe context shared with React overlay ───────────────────────────────────
 interface GlobeProject {
@@ -185,6 +162,7 @@ export interface UseGlobeOptions {
   cables?: SubmarineCable[];
   dataCenters?: DataCenter[];
   ixps?: IxPoint[];
+  satellites?: SatelliteLayerData;
 }
 
 export function useGlobe(
@@ -200,6 +178,8 @@ export function useGlobe(
 
     let animId: number;
     let mounted = true;
+    // Прибирання, що створюється всередині async IIFE (реєстр шарів, воркер, рендерер)
+    let teardown: (() => void) | undefined;
 
     (async () => {
       const OrbitControls = await loadOrbitControls();
@@ -217,6 +197,8 @@ export function useGlobe(
       renderer.toneMappingExposure = 1.15;
 
       const scene = new THREE.Scene();
+      // Реєстр модульних шарів (спочатку порожній)
+      const registry = createLayerRegistry();
       const camera = new THREE.PerspectiveCamera(
         42,
         window.innerWidth / window.innerHeight,
@@ -1084,11 +1066,17 @@ export function useGlobe(
         get visible() { return borderGroup.visible; },
         set visible(v: boolean) { borderGroup.visible = v; politicalGroup.visible = v; },
       };
+      // Шар супутників реєструється ДО знімка globeLayerGroups (інакше його немає в toggle-мапі)
+      const satLayer = new SatellitesLayer(
+        () => new Worker(new URL("../lib/satellites/sat.worker.ts", import.meta.url)) as unknown as SatWorkerPort,
+      );
+      registry.add("satellites", satLayer, scene);
       window.globeLayerGroups = {
-        cables:      cableGroup,
+        cables:     cableGroup,
         borders:     bordersProxy,
         datacenters: dcGroup,
         ixps:        ixpGroup,
+        ...registry.groups(),
       };
 
       // Apply initial layer defaults immediately after Three.js groups are registered
@@ -1097,6 +1085,10 @@ export function useGlobe(
       if (initLayers?.cables !== undefined) cableGroup.visible = initLayers.cables;
       if (initLayers?.datacenters !== undefined) dcGroup.visible = initLayers.datacenters;
       if (initLayers?.ixps !== undefined) ixpGroup.visible = initLayers.ixps;
+      // Початкова видимість шарів реєстру
+      Object.entries(registry.groups()).forEach(([key, group]) => {
+        if (initLayers?.[key] !== undefined) group.visible = initLayers[key];
+      });
 
       window.globeState = {
         mode: optionsRef.current.mode,
@@ -1323,6 +1315,14 @@ export function useGlobe(
           }
         }
 
+        // Шари реєстру
+        const hit = registry.pick(raycaster);
+        if (hit) {
+          optionsRef.current.onInfraHover?.(hit, e.clientX, e.clientY);
+          canvas.style.cursor = 'pointer';
+          return;
+        }
+
         optionsRef.current.onInfraHover?.(null, 0, 0);
         canvas.style.cursor = '';
       };
@@ -1337,6 +1337,8 @@ export function useGlobe(
       const lastSelectedRef = { current: undefined as string | null | undefined };
       // Відстежуємо зміни інфраструктурних даних
       const lastCablesRef = { current: optionsRef.current.cables };
+      const lastSatsRef = { current: undefined as SatelliteLayerData | undefined };
+      const lastSatAltRef = { current: false };
       const lastDcsRef = { current: optionsRef.current.dataCenters };
       const lastIxpsRef = { current: optionsRef.current.ixps };
 
@@ -1408,6 +1410,7 @@ export function useGlobe(
 
         window.globeCamDist = camera.position.length();
         controls.update();
+        registry.update(dt, new Date(Date.now() + (tweaks.timeOffset ?? 0) * 3_600_000));
 
         // Відстеження зміни selectedCountry
         const newSelected = optionsRef.current.selectedCountry;
@@ -1434,6 +1437,18 @@ export function useGlobe(
         if (newCountries !== lastCountriesRef.current) {
           lastCountriesRef.current = newCountries;
           if (newCountries) buildCountryMarkers(newCountries);
+        }
+
+        // Дані супутників та масштаб висоти — лише при зміні
+        const curSats = optionsRef.current.satellites;
+        if (curSats !== lastSatsRef.current) {
+          lastSatsRef.current = curSats;
+          if (curSats) satLayer.setData(curSats);
+        }
+        const satAlt = !!tweaks.satAltExaggerate;
+        if (satAlt !== lastSatAltRef.current) {
+          lastSatAltRef.current = satAlt;
+          satLayer.setAltitudeScale(satAlt ? 3 : 1);
         }
 
         // Rebuild cable/dc/ixp layers when data props change
@@ -1489,12 +1504,13 @@ export function useGlobe(
       window.addEventListener("resize", onResize);
 
       // ── Cleanup ───────────────────────────────────────────────────────────
-      return () => {
+      teardown = () => {
         mounted = false;
         cancelAnimationFrame(animId);
         canvas.removeEventListener('click', onCanvasClick);
         canvas.removeEventListener('mousemove', onCanvasMouseMove);
         window.removeEventListener("resize", onResize);
+        registry.dispose(scene);
         renderer.dispose();
         tradeMaterials.forEach((m) => m.dispose());
         cableMaterials.forEach((m) => m.dispose());
@@ -1508,6 +1524,10 @@ export function useGlobe(
     return () => {
       mounted = false;
       cancelAnimationFrame(animId);
+      // Викликаємо один раз; якщо IIFE завершився раніше (!mounted), teardown не заданий
+      const t = teardown;
+      teardown = undefined;
+      t?.();
     };
   }, [canvasRef]);
 }

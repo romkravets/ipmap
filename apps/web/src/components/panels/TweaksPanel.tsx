@@ -171,6 +171,7 @@ export function TweaksPanel() {
             ['showTerminator', 'Day/Night Line'],
             ['showSunMarker',  'Sun Marker'],
             ['markerPulse',    'Country Pulse'],
+            ['satAltExaggerate', 'Satellites ×3 altitude'],
           ] as [keyof TweakValues, string][]).map(([key, label]) => (
             <div key={key} className="twk-row twk-row-h">
               <label style={{ fontSize: '11px', color: 'rgba(232,236,244,.6)', fontWeight: 500 }}>{label}</label>

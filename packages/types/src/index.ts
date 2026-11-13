@@ -9,6 +9,7 @@ export interface TweakValues {
   showSunMarker: boolean;
   markerPulse: boolean;
   timeOffset: number;
+  satAltExaggerate: boolean;
 }
 
 // ── App state ─────────────────────────────────────────────────────────────────
@@ -67,3 +68,36 @@ export interface IxPoint {
 export type InfraHoverInfo =
   | { kind: 'datacenter'; item: DataCenter }
   | { kind: 'ixp'; item: IxPoint }
+  | { kind: 'satellite'; item: SatHoverItem };
+
+// Групи супутників (CelesTrak)
+export type SatelliteGroup = 'stations' | 'starlink' | 'oneweb' | 'gps-ops' | 'galileo' | 'weather';
+
+// Стиснутий OMM-запис: лише поля, потрібні для SGP4
+export interface SatOmm {
+  OBJECT_NAME: string;
+  NORAD_CAT_ID: number;
+  EPOCH: string;
+  MEAN_MOTION: number;
+  ECCENTRICITY: number;
+  INCLINATION: number;
+  RA_OF_ASC_NODE: number;
+  ARG_OF_PERICENTER: number;
+  MEAN_ANOMALY: number;
+  BSTAR: number;
+  MEAN_MOTION_DOT: number;
+  MEAN_MOTION_DDOT: number;
+}
+
+export interface SatPosition {
+  lat: number;
+  lng: number;
+  altKm: number;
+}
+
+export interface SatHoverItem {
+  name: string;
+  noradId: number;
+  altKm: number;
+  speedKmS: number;
+}

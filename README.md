@@ -93,6 +93,15 @@ ipmap/
 
 Generated outputs are stored under apps/web/public/data and are gitignored.
 
+### Satellites layer
+
+- Source: CelesTrak GP (OMM JSON), no API key. Groups: `stations` (default), plus `starlink`, `oneweb`, `gps-ops`, `galileo`, `weather` on demand.
+- Positions are computed in the browser with SGP4 (satellite.js) inside a Web Worker.
+- Server route `/api/satellites?group=...` compresses the OMM data and keeps a 2 h in-memory server cache (shared upstream fetch, stale data served if CelesTrak fails).
+- The "Above Kremenets now" list shows satellites over the observer, plus the next visible ISS pass (approximate: the ISS's own illumination is not checked).
+- Tweak "Satellites x3 altitude" exaggerates orbit heights for readability.
+- GEO satellites (mean motion < 2 rev/day) are not shown in v1.
+
 ### Testing
 
 ```bash
@@ -199,6 +208,15 @@ ipmap/
 - scripts/build-infra-data.mjs будує шари підводних кабелів, дата-центрів та IXP.
 
 Згенеровані файли зберігаються у apps/web/public/data і не комітяться в git.
+
+### Шар супутників
+
+- Джерело: CelesTrak GP (OMM JSON), без API-ключа. Групи: `stations` (за замовчуванням), а також `starlink`, `oneweb`, `gps-ops`, `galileo`, `weather` на вимогу.
+- Позиції рахуються у браузері через SGP4 (satellite.js) у Web Worker.
+- Серверний роут `/api/satellites?group=...` стискає OMM-дані й тримає серверний кеш у пам'яті на 2 год (спільний запит до апстріму, за збою CelesTrak віддає застарілі дані).
+- Список «Над Кременцем зараз» показує супутники над спостерігачем і наступний видимий прольот МКС (наближено: власне освітлення МКС не перевіряється).
+- Тюнінг «Satellites ×3 altitude» збільшує висоту орбіт для наочності.
+- GEO-супутники (середній рух < 2 об/добу) у v1 не показуються.
 
 ### Тести
 
